@@ -1,15 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useAuth } from '@/components/auth/AuthProvider';
 
-const EVENTS = [
-  { id: 'ev001', name: 'Boda García & López',    date: '20 Jun 2026', location: 'Monterrey, NL',    videos: 87,  status: 'Completado' },
-  { id: 'ev002', name: 'XV Años Valentina',       date: '15 Jun 2026', location: 'CDMX',             videos: 42,  status: 'Completado' },
-  { id: 'ev003', name: 'Tech Summit Corporativo', date: '10 Jun 2026', location: 'Guadalajara, JAL', videos: 156, status: 'Completado' },
-  { id: 'ev004', name: 'Cumpleaños Carlos M.',    date: '28 Jun 2026', location: 'Monterrey, NL',    videos: 0,   status: 'Programado' },
-];
+interface FirestoreEvent {
+  id: string;
+  name: string;
+  date: Timestamp;
+  createdAt?: Timestamp;
+  location?: string;
+  videoCount?: number;
+  status: string;
+}
 
 type View = 'grid' | 'list';
+
+function formatTs(ts: Timestamp | undefined): string {
+  if (!ts?.toDate) return '—';
+  return ts.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 const StatusBadge = ({ status }: { status: string }) => (
   <span
@@ -26,13 +37,42 @@ const StatusBadge = ({ status }: { status: string }) => (
 );
 
 export default function EventsPage() {
-  const [view,   setView]   = useState<View>('grid');
-  const [search, setSearch] = useState('');
+  const { user } = useAuth();
+  const [events,   setEvents]   = useState<FirestoreEvent[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [view,     setView]     = useState<View>('grid');
+  const [search,   setSearch]   = useState('');
 
-  const filtered = EVENTS.filter((e) =>
-    e.name.toLowerCase().includes(search.toLowerCase()) ||
-    e.location.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'events'), where('operatorId', '==', user.uid));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as FirestoreEvent))
+          .sort((a, b) => {
+            const aMs = a.createdAt?.toMillis?.() ?? a.date?.toMillis?.() ?? 0;
+            const bMs = b.createdAt?.toMillis?.() ?? b.date?.toMillis?.() ?? 0;
+            return bMs - aMs;
+          });
+        setEvents(docs);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return unsub;
+  }, [user]);
+
+  // Sanitize search input — only use as a display filter, never in DB queries
+  const safeSearch = search.trim().toLowerCase();
+  const filtered = safeSearch
+    ? events.filter(
+        (e) =>
+          e.name.toLowerCase().includes(safeSearch) ||
+          (e.location ?? '').toLowerCase().includes(safeSearch)
+      )
+    : events;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1280px' }}>
@@ -41,7 +81,9 @@ export default function EventsPage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#ffffff', margin: '0 0 4px' }}>Mis Eventos</h1>
-          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>{EVENTS.length} eventos en el sistema</p>
+          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+            {loading ? 'Cargando…' : `${events.length} evento${events.length !== 1 ? 's' : ''} en el sistema`}
+          </p>
         </div>
 
         {/* Grid / List toggle */}
@@ -63,13 +105,9 @@ export default function EventsPage() {
               key={key}
               onClick={() => setView(key)}
               style={{
-                padding: '8px',
-                borderRadius: '8px',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
+                padding: '8px', borderRadius: '8px', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
                 background: view === key ? 'rgba(157,124,255,0.15)' : 'transparent',
-                color:       view === key ? '#9D7CFF' : 'rgba(255,255,255,0.35)',
+                color:      view === key ? '#9D7CFF' : 'rgba(255,255,255,0.35)',
               }}
             >
               {icon}
@@ -78,15 +116,11 @@ export default function EventsPage() {
         </div>
       </div>
 
-      {/* Search — uses position:relative (inline) so the icon positions correctly */}
+      {/* Search */}
       <div style={{ position: 'relative' }}>
         <svg
           viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-          style={{
-            position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)',
-            width: '16px', height: '16px', color: 'rgba(255,255,255,0.3)',
-            pointerEvents: 'none',
-          }}
+          style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}
         >
           <path strokeLinecap="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
@@ -95,38 +129,51 @@ export default function EventsPage() {
           placeholder="Buscar eventos…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          maxLength={100}
           style={{
-            width: '100%',
-            paddingLeft: '44px',
-            paddingRight: '16px',
-            paddingTop: '12px',
-            paddingBottom: '12px',
-            borderRadius: '12px',
-            fontSize: '14px',
-            color: '#ffffff',
-            background: '#0F0F1A',
-            border: '1px solid #1E1E35',
-            outline: 'none',
-            boxSizing: 'border-box',
+            width: '100%', paddingLeft: '44px', paddingRight: '16px',
+            paddingTop: '12px', paddingBottom: '12px',
+            borderRadius: '12px', fontSize: '14px', color: '#ffffff',
+            background: '#0F0F1A', border: '1px solid #1E1E35', outline: 'none', boxSizing: 'border-box',
           }}
           onFocus={(e) => (e.currentTarget.style.borderColor = '#9D7CFF')}
           onBlur={(e)  => (e.currentTarget.style.borderColor = '#1E1E35')}
         />
       </div>
 
+      {/* Loading */}
+      {loading && (
+        <div style={{ padding: '64px', textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.25)' }}>
+          Cargando eventos…
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && events.length === 0 && (
+        <div style={{ padding: '64px', textAlign: 'center', borderRadius: '16px', background: '#0F0F1A', border: '1px solid #1E1E35' }}>
+          <p style={{ fontSize: '15px', fontWeight: 600, color: 'rgba(255,255,255,0.4)', marginBottom: '8px' }}>
+            Aún no tienes eventos registrados.
+          </p>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.2)' }}>
+            Los eventos se crean desde la app G-SPIN 360.
+          </p>
+        </div>
+      )}
+
+      {/* No search results */}
+      {!loading && events.length > 0 && filtered.length === 0 && (
+        <div style={{ padding: '48px', textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.3)' }}>
+          Sin resultados para "{search}"
+        </div>
+      )}
+
       {/* Grid view */}
-      {view === 'grid' ? (
+      {!loading && filtered.length > 0 && view === 'grid' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
           {filtered.map((ev) => (
             <div
               key={ev.id}
-              style={{
-                padding: '24px',
-                borderRadius: '16px',
-                background: '#0F0F1A',
-                border: '1px solid #1E1E35',
-                transition: 'border-color 0.2s',
-              }}
+              style={{ padding: '24px', borderRadius: '16px', background: '#0F0F1A', border: '1px solid #1E1E35', transition: 'border-color 0.2s' }}
               onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(157,124,255,0.3)')}
               onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#1E1E35')}
             >
@@ -138,27 +185,19 @@ export default function EventsPage() {
               </div>
 
               <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', marginBottom: '4px' }}>{ev.name}</h3>
-              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '2px' }}>{ev.date}</p>
-              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', marginBottom: '20px' }}>{ev.location}</p>
+              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '2px' }}>{formatTs(ev.date)}</p>
+              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', marginBottom: '20px' }}>{ev.location ?? '—'}</p>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', borderTop: '1px solid #1E1E35' }}>
                 <div>
-                  <p style={{ fontSize: '24px', fontWeight: 900, color: '#ffffff', margin: 0 }}>{ev.videos}</p>
+                  <p style={{ fontSize: '24px', fontWeight: 900, color: '#ffffff', margin: 0 }}>{ev.videoCount ?? 0}</p>
                   <p style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', margin: 0 }}>Videos</p>
                 </div>
                 <a
                   href={`/evento/${ev.id}`}
                   target="_blank"
                   rel="noreferrer"
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: '10px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    color: '#9D7CFF',
-                    border: '1px solid rgba(157,124,255,0.3)',
-                    textDecoration: 'none',
-                  }}
+                  style={{ padding: '8px 16px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, color: '#9D7CFF', border: '1px solid rgba(157,124,255,0.3)', textDecoration: 'none' }}
                 >
                   Ver galería →
                 </a>
@@ -166,8 +205,10 @@ export default function EventsPage() {
             </div>
           ))}
         </div>
-      ) : (
-        /* List view */
+      )}
+
+      {/* List view */}
+      {!loading && filtered.length > 0 && view === 'list' && (
         <div style={{ borderRadius: '16px', overflow: 'hidden', background: '#0F0F1A', border: '1px solid #1E1E35' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -189,9 +230,9 @@ export default function EventsPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
                     <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 500, color: '#ffffff', whiteSpace: 'nowrap' }}>{ev.name}</td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{ev.date}</td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{ev.location}</td>
-                    <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>{ev.videos}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{formatTs(ev.date)}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{ev.location ?? '—'}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>{ev.videoCount ?? 0}</td>
                     <td style={{ padding: '14px 20px' }}><StatusBadge status={ev.status} /></td>
                     <td style={{ padding: '14px 20px' }}>
                       <a href={`/evento/${ev.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: '#9D7CFF', textDecoration: 'none' }}>

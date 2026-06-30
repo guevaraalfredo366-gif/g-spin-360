@@ -71,7 +71,11 @@ const ADMIN_NAV = [
 export default function Sidebar() {
   const pathname          = usePathname();
   const router            = useRouter();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, profile } = useAuth();
+
+  // Prefer Firestore displayName > Firebase Auth displayName > email prefix
+  const displayName = profile?.displayName || user?.displayName || user?.email?.split('@')[0] || 'Operador';
+  const avatarInitial = displayName[0]?.toUpperCase() ?? 'U';
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
@@ -92,15 +96,15 @@ export default function Sidebar() {
         borderRight: '1px solid #1E1E35',
       }}
     >
-      {/* Logo */}
+      {/* Logo — 20% larger than original 120px = 144px */}
       <div style={{ padding: '20px 20px', borderBottom: '1px solid #1E1E35', display: 'flex', alignItems: 'center' }}>
         <Image
           src="/img/Logo.png"
           alt="G-SPIN 360"
-          width={120}
-          height={38}
+          width={144}
+          height={46}
           className="rounded-xl"
-          style={{ objectFit: 'contain', height: '38px', width: 'auto' }}
+          style={{ objectFit: 'contain', height: '46px', width: 'auto' }}
           priority
         />
       </div>
@@ -189,11 +193,11 @@ export default function Sidebar() {
               flexShrink: 0,
             }}
           >
-            {user?.email?.[0]?.toUpperCase() ?? 'U'}
+            {avatarInitial}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: '12px', fontWeight: 600, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {user?.email?.split('@')[0]}
+              {displayName}
             </p>
             <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user?.email}

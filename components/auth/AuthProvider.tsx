@@ -10,6 +10,11 @@ export interface UserProfile {
   plan: 'starter' | 'pro' | 'business';
   subscriptionStatus: 'trial' | 'active' | 'expired' | 'canceled';
   daysRemaining?: number;
+  displayName?: string;
+  phone?: string;
+  company?: string;
+  stripeCustomerId?: string;
+  activatedAt?: { toDate(): Date } | null;
 }
 
 interface AuthContextValue {

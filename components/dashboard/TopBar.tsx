@@ -14,8 +14,11 @@ const TITLES: Record<string, string> = {
 
 export default function TopBar() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const title    = TITLES[pathname] ?? 'Dashboard';
+
+  const displayName    = profile?.displayName || user?.displayName || user?.email?.split('@')[0] || 'Operador';
+  const avatarInitial  = displayName[0]?.toUpperCase() ?? 'U';
 
   return (
     <header
@@ -66,10 +69,10 @@ export default function TopBar() {
               flexShrink: 0,
             }}
           >
-            {user?.email?.[0]?.toUpperCase() ?? 'U'}
+            {avatarInitial}
           </div>
           <span style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255,255,255,0.6)' }}>
-            {user?.email?.split('@')[0]}
+            {displayName}
           </span>
         </div>
       </div>

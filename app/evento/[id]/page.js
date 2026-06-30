@@ -1,18 +1,26 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 
 export default function EventoPage({ params }) {
   const { id: idEvento } = params;
-  const [videos,  setVideos]  = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [active,  setActive]  = useState(null);
+  const [eventName, setEventName] = useState('');
+  const [videos,    setVideos]    = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [active,    setActive]    = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
+        // Try to fetch the event name from the events collection
+        const eventSnap = await getDoc(doc(db, 'events', idEvento));
+        if (eventSnap.exists()) {
+          setEventName(eventSnap.data().name ?? '');
+        }
+
+        // Fetch videos for this event
         const q = query(
           collection(db, 'videos'),
           where('idEvento', '==', idEvento),
@@ -28,12 +36,19 @@ export default function EventoPage({ params }) {
     })();
   }, [idEvento]);
 
+  // Route Cloudinary URLs through the download proxy for proper Content-Disposition:
+  // the 'download' attribute only works for same-origin URLs; Cloudinary is cross-origin.
+  const downloadUrl = (videoUrl, videoId) => {
+    const filename = `gspin360_${idEvento}_${videoId}.mp4`;
+    return `/api/download?url=${encodeURIComponent(videoUrl)}&name=${encodeURIComponent(filename)}`;
+  };
+
   return (
     <div style={s.page}>
       {/* Header */}
       <div style={s.header}>
         <h1 style={s.brand}>G-SPIN 360</h1>
-        <h2 style={s.eventName}>{idEvento}</h2>
+        <h2 style={s.eventName}>{eventName || idEvento}</h2>
         <p style={s.countLabel}>
           {loading ? '…' : `${videos.length} video${videos.length !== 1 ? 's' : ''}`}
         </p>
@@ -67,8 +82,7 @@ export default function EventoPage({ params }) {
             />
             <div style={s.modalActions}>
               <a
-                href={active.url}
-                download={`gspin360_${idEvento}_${active.id}.mp4`}
+                href={downloadUrl(active.url, active.id)}
                 style={s.dlBtn}
               >
                 ⬇ Descargar
@@ -98,8 +112,7 @@ export default function EventoPage({ params }) {
               </div>
               <div style={s.cardFooter}>
                 <a
-                  href={v.url}
-                  download={`gspin360_${idEvento}_${v.id}.mp4`}
+                  href={downloadUrl(v.url, v.id)}
                   style={s.cardDl}
                 >
                   ⬇ Descargar
@@ -220,6 +233,8 @@ const s = {
     fontWeight:    600,
     letterSpacing: '0.05em',
     cursor:        'pointer',
+    textDecoration: 'none',
+    display:       'block',
   },
   modal: {
     position:   'fixed',
@@ -263,6 +278,7 @@ const s = {
     padding:         '12px 0',
     borderRadius:    10,
     cursor:          'pointer',
+    textDecoration:  'none',
   },
   closeBtn: {
     background:   'transparent',

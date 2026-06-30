@@ -49,13 +49,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing firebaseUid in session metadata' }, { status: 400 });
     }
 
+    const now = new Date();
+
+    // Update user subscription status — server-side only via Admin SDK
     await db.collection('users').doc(uid).update({
       plan,
       subscriptionStatus: 'active',
       stripeCustomerId:   session.customer ?? null,
       stripeSessionId:    session.id,
-      activatedAt:        new Date(),
+      activatedAt:        now,
+      daysRemaining:      30,
     });
+
+    // Record payment in subcollection for billing history display
+    await db
+      .collection('users').doc(uid)
+      .collection('payments').doc(session.id)
+      .set({
+        date:            now,
+        plan,
+        amount:          session.amount_total ?? 0,
+        currency:        session.currency ?? 'mxn',
+        status:          'completed',
+        stripeSessionId: session.id,
+        stripeCustomerId: session.customer ?? null,
+      });
   }
 
   if (event.type === 'customer.subscription.deleted') {
@@ -64,6 +82,7 @@ export async function POST(req: NextRequest) {
     if (uid) {
       await db.collection('users').doc(uid).update({
         subscriptionStatus: 'canceled',
+        daysRemaining:      0,
       });
     }
   }
