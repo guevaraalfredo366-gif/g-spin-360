@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, onSnapshot, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { LicenseId } from '@/lib/licenses';
 
@@ -58,31 +58,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        try {
-          const snap = await getDoc(doc(db, 'users', u.uid));
+    // Holds the Firestore real-time listener so it can be torn down on sign-out.
+    let profileUnsub: (() => void) | null = null;
+
+    const authUnsub = onAuthStateChanged(auth, (u) => {
+      // Tear down the previous user's Firestore listener
+      profileUnsub?.();
+      profileUnsub = null;
+
+      if (!u) {
+        setProfile(null);
+        setIsAdmin(false);
+        setUser(null);
+        return;
+      }
+
+      // onSnapshot keeps the profile live — dashboard updates immediately after
+      // a Stripe webhook or the migration API writes to Firestore.
+      profileUnsub = onSnapshot(
+        doc(db, 'users', u.uid),
+        (snap) => {
           if (snap.exists()) {
             const data = snap.data() as UserProfile;
             setProfile(data);
             setIsAdmin(data.role === 'admin');
+
+            // Fire-and-forget: backfill expiryDate for legacy trial accounts.
+            // Uses the Admin SDK route so it bypasses client Firestore rules.
+            // When the write completes, onSnapshot fires again with the new date.
+            if (data.licenseStatus === 'trial' && !data.expiryDate) {
+              u.getIdToken()
+                .then((token) =>
+                  fetch('/api/migrate-trial', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                  })
+                )
+                .catch(() => {});
+            }
           } else {
             setProfile(null);
             setIsAdmin(false);
           }
-        } catch {
+          // loading stays true (user === undefined) until the first snapshot arrives
+          setUser(u);
+        },
+        () => {
           // Network error or rules denial — degrade gracefully, don't block auth
           setProfile(null);
           setIsAdmin(false);
+          setUser(u);
         }
-      } else {
-        setProfile(null);
-        setIsAdmin(false);
-      }
-      // Set user AFTER profile fetch so loading stays true until both are ready
-      setUser(u ?? null);
+      );
     });
-    return unsub;
+
+    return () => {
+      authUnsub();
+      profileUnsub?.();
+    };
   }, []);
 
   return (

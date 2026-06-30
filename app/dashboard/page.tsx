@@ -130,9 +130,9 @@ export default function DashboardPage() {
           title="Licencia actual"
           value={license.name}
           subtitle={
-            isTrial    ? 'En prueba — 7 días gratis' :
             isLifetime ? 'Vitalicia' :
-            expired    ? 'Expirada — requiere compra' :
+            expired    ? 'Expirada — renueva tu licencia' :
+            isTrial    ? 'Periodo de prueba' :
                          'Activa'
           }
           accent={license.color}

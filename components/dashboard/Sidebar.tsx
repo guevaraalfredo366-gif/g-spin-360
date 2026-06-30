@@ -99,21 +99,34 @@ export default function Sidebar() {
       {/* Logo */}
       <div
         style={{
-          padding: '28px 16px 22px',
+          padding: '24px 16px',
           borderBottom: '1px solid #1E1E35',
           display: 'flex',
-          alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Image
-          src="/img/Logo.png"
-          alt="G-SPIN 360"
-          width={200}
-          height={80}
-          style={{ objectFit: 'contain', height: '80px', width: 'auto', maxWidth: '200px' }}
-          priority
-        />
+        <div
+          style={{
+            width: '120px',
+            height: '120px',
+            borderRadius: '24px',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            background: 'linear-gradient(145deg, rgba(157,124,255,0.1), rgba(255,115,0,0.06))',
+            border: '1px solid rgba(157,124,255,0.18)',
+            overflow: 'hidden',
+          }}
+        >
+          <Image
+            src="/img/Logo.png"
+            alt="G-SPIN 360"
+            width={96}
+            height={96}
+            style={{ objectFit: 'contain', width: '96px', height: '96px' }}
+            priority
+          />
+        </div>
       </div>
 
       {/* Navigation */}
