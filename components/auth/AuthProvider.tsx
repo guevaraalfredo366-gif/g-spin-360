@@ -23,7 +23,8 @@ export interface UserProfile {
 export function daysRemaining(profile: UserProfile | null): number {
   if (!profile) return 0;
   if (profile.licenseStatus === 'lifetime') return Infinity;
-  if (!profile.expiryDate) return 0;
+  // Trial accounts created before the expiryDate field was introduced: assume 7 days.
+  if (!profile.expiryDate) return profile.licenseStatus === 'trial' ? 7 : 0;
   const ms = profile.expiryDate.toDate().getTime() - Date.now();
   return Math.max(0, Math.ceil(ms / 86_400_000));
 }
@@ -31,7 +32,8 @@ export function daysRemaining(profile: UserProfile | null): number {
 export function isLicenseExpired(profile: UserProfile | null): boolean {
   if (!profile) return true;
   if (profile.licenseStatus === 'lifetime') return false;
-  if (!profile.expiryDate) return true;
+  // Trial without expiryDate: not expired (legacy account or fresh signup).
+  if (!profile.expiryDate) return profile.licenseStatus !== 'trial';
   return profile.expiryDate.toDate().getTime() < Date.now();
 }
 

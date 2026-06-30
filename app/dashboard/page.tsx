@@ -32,6 +32,7 @@ export default function DashboardPage() {
 
   const license       = LICENSE_MAP[profile?.licenseId ?? 'starter'];
   const isLifetime     = profile?.licenseStatus === 'lifetime';
+  const isTrial        = profile?.licenseStatus === 'trial';
   const expired        = isLicenseExpired(profile);
   const days           = computeDaysRemaining(profile);
   const displayName    = profile?.displayName || user?.displayName || 'Operador';
@@ -61,12 +62,17 @@ export default function DashboardPage() {
 
   const recentEvents = events.slice(0, 5);
 
+  // Expiry date formatted for display
+  const expiryFormatted = profile?.expiryDate?.toDate
+    ? profile.expiryDate.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
+    : null;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', maxWidth: '1280px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '56px', maxWidth: '1280px' }}>
 
       {/* Welcome */}
       <div>
-        <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#ffffff', margin: '0 0 4px' }}>
+        <h1 style={{ fontSize: '26px', fontWeight: 900, color: '#ffffff', margin: '0 0 6px' }}>
           Bienvenido, {displayName} 👋
         </h1>
         <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
@@ -74,15 +80,21 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Stats grid — explicit breakpoints guarantee responsiveness down to mobile widths */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* Stats grid — CSS Grid inline for reliable responsiveness in Tailwind v4 */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '16px',
+        }}
+      >
         <StatsCard
           title="Eventos totales"
           value={evLoading ? '—' : String(events.length)}
           subtitle="Registrados en tu cuenta"
           accent="#9D7CFF"
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="w-5 h-5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} style={{ width: '20px', height: '20px' }}>
               <path strokeLinecap="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           }
@@ -93,7 +105,7 @@ export default function DashboardPage() {
           subtitle="Total acumulado"
           accent="#FF7300"
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="w-5 h-5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} style={{ width: '20px', height: '20px' }}>
               <path strokeLinecap="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.89L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
             </svg>
           }
@@ -101,21 +113,31 @@ export default function DashboardPage() {
         <StatsCard
           title="Días restantes"
           value={isLifetime ? '∞' : expired ? 'Expirada' : String(days)}
-          subtitle={isLifetime ? 'Acceso vitalicio' : expired ? 'Renueva tu licencia' : `Vence el ${profile?.expiryDate?.toDate ? profile.expiryDate.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : '—'}`}
-          accent={expired ? '#EF4444' : '#22C55E'}
+          subtitle={
+            isLifetime ? 'Acceso vitalicio' :
+            expired    ? 'Renueva tu licencia' :
+            isTrial    ? `Prueba gratuita${expiryFormatted ? ` · vence el ${expiryFormatted}` : ''}` :
+                         `Vence el ${expiryFormatted ?? '—'}`
+          }
+          accent={expired ? '#EF4444' : isTrial ? '#F59E0B' : '#22C55E'}
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="w-5 h-5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} style={{ width: '20px', height: '20px' }}>
               <path strokeLinecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           }
         />
         <StatsCard
           title="Licencia actual"
-          value={license.name.replace('G-Spin ', '')}
-          subtitle={isLifetime ? 'Vitalicia' : expired ? 'Expirada — requiere compra' : 'Activa'}
+          value={license.name}
+          subtitle={
+            isTrial    ? 'En prueba — 7 días gratis' :
+            isLifetime ? 'Vitalicia' :
+            expired    ? 'Expirada — requiere compra' :
+                         'Activa'
+          }
           accent={license.color}
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="w-5 h-5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} style={{ width: '20px', height: '20px' }}>
               <path strokeLinecap="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
             </svg>
           }
@@ -124,8 +146,8 @@ export default function DashboardPage() {
 
       {/* Recent events */}
       <div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', margin: 0 }}>Eventos recientes</h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', margin: 0 }}>Eventos recientes</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <CreateEventButton expired={expired} />
             <Link href="/dashboard/events" style={{ fontSize: '12px', fontWeight: 500, color: '#9D7CFF', textDecoration: 'none' }}>
@@ -202,9 +224,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div style={{ marginTop: '8px' }}>
-        <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', marginBottom: '16px' }}>Acciones rápidas</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div>
+        <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', marginBottom: '20px' }}>Acciones rápidas</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           {[
             { label: 'Ver mis eventos',     href: '/dashboard/events',       color: '#9D7CFF', desc: 'Gestiona todos tus videos 360°' },
             { label: 'Gestionar membresía', href: '/dashboard/subscription', color: '#FF7300', desc: 'Planes y facturación' },
