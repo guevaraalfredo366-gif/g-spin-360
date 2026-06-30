@@ -1,26 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { doc, getDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 
 export default function EventoPage({ params }) {
-  const { id: idEvento } = params;
-  const [eventName, setEventName] = useState('');
-  const [videos,    setVideos]    = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [active,    setActive]    = useState(null);
+  const { id: idEvento } = use(params);
+
+  const [event,    setEvent]    = useState(null); // { name, date, location }
+  const [videos,   setVideos]   = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [active,   setActive]   = useState(null);
+  const [copiedId, setCopiedId] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
-        // Try to fetch the event name from the events collection
         const eventSnap = await getDoc(doc(db, 'events', idEvento));
-        if (eventSnap.exists()) {
-          setEventName(eventSnap.data().name ?? '');
-        }
+        if (eventSnap.exists()) setEvent(eventSnap.data());
 
-        // Fetch videos for this event
         const q = query(
           collection(db, 'videos'),
           where('idEvento', '==', idEvento),
@@ -36,19 +34,43 @@ export default function EventoPage({ params }) {
     })();
   }, [idEvento]);
 
-  // Route Cloudinary URLs through the download proxy for proper Content-Disposition:
-  // the 'download' attribute only works for same-origin URLs; Cloudinary is cross-origin.
   const downloadUrl = (videoUrl, videoId) => {
     const filename = `gspin360_${idEvento}_${videoId}.mp4`;
     return `/api/download?url=${encodeURIComponent(videoUrl)}&name=${encodeURIComponent(filename)}`;
   };
+
+  const shareVideo = async (v) => {
+    const videoPageUrl = `${window.location.origin}/video/${v.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Mi video G-SPIN 360',
+          text: `Mira mi video del evento ${event?.name ?? ''}`,
+          url: videoPageUrl,
+        });
+        return;
+      } catch { /* user cancelled or API not supported */ }
+    }
+    try {
+      await navigator.clipboard.writeText(videoPageUrl);
+      setCopiedId(v.id);
+      setTimeout(() => setCopiedId(id => id === v.id ? null : id), 2500);
+    } catch { /* clipboard denied */ }
+  };
+
+  const eventDate = event?.date?.toDate
+    ? event.date.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
+
+  const metaLine = [eventDate, event?.location].filter(Boolean).join(' · ');
 
   return (
     <div style={s.page}>
       {/* Header */}
       <div style={s.header}>
         <h1 style={s.brand}>G-SPIN 360</h1>
-        <h2 style={s.eventName}>{eventName || idEvento}</h2>
+        <h2 style={s.eventName}>{event?.name ?? idEvento}</h2>
+        {metaLine && <p style={s.eventMeta}>{metaLine}</p>}
         <p style={s.countLabel}>
           {loading ? '…' : `${videos.length} video${videos.length !== 1 ? 's' : ''}`}
         </p>
@@ -69,7 +91,7 @@ export default function EventoPage({ params }) {
         </div>
       )}
 
-      {/* Modal de reproducción */}
+      {/* Playback modal */}
       {active && (
         <div style={s.modal} onClick={() => setActive(null)}>
           <div style={s.modalInner} onClick={e => e.stopPropagation()}>
@@ -81,13 +103,13 @@ export default function EventoPage({ params }) {
               style={s.modalVideo}
             />
             <div style={s.modalActions}>
-              <a
-                href={downloadUrl(active.url, active.id)}
-                style={s.dlBtn}
-              >
+              <a href={downloadUrl(active.url, active.id)} style={s.dlBtn}>
                 ⬇ Descargar
               </a>
-              <button style={s.closeBtn} onClick={() => setActive(null)}>✕ Cerrar</button>
+              <button style={s.shareBtn} onClick={() => shareVideo(active)}>
+                {copiedId === active.id ? '✓ Copiado' : '↗ Compartir'}
+              </button>
+              <button style={s.closeBtn} onClick={() => setActive(null)}>✕</button>
             </div>
           </div>
         </div>
@@ -111,19 +133,19 @@ export default function EventoPage({ params }) {
                 <div style={s.playOverlay}>▶</div>
               </div>
               <div style={s.cardFooter}>
-                <a
-                  href={downloadUrl(v.url, v.id)}
-                  style={s.cardDl}
-                >
+                <a href={downloadUrl(v.url, v.id)} style={s.cardDl}>
                   ⬇ Descargar
                 </a>
+                <button onClick={() => shareVideo(v)} style={s.cardShare}>
+                  {copiedId === v.id ? '✓' : '↗'}
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <p style={s.footer}>G-SPIN 360 · Todos los videos del evento</p>
+      <p style={s.footer}>G-SPIN 360 · Galería del evento</p>
     </div>
   );
 }
@@ -135,8 +157,8 @@ const s = {
     padding:         '0 16px 64px',
   },
   header: {
-    textAlign:   'center',
-    paddingTop:  48,
+    textAlign:     'center',
+    paddingTop:    48,
     paddingBottom: 32,
   },
   brand: {
@@ -150,15 +172,23 @@ const s = {
   eventName: {
     fontSize:      28,
     fontWeight:    800,
-    letterSpacing: '0.06em',
+    letterSpacing: '0.04em',
     color:         '#FFFFFF',
-    marginBottom:  8,
+    marginBottom:  6,
+  },
+  eventMeta: {
+    color:         '#F5F5F7',
+    fontSize:      13,
+    opacity:       0.45,
+    letterSpacing: '0.06em',
+    marginBottom:  6,
   },
   countLabel: {
-    color:     '#F5F5F7',
-    fontSize:  13,
-    opacity:   0.4,
+    color:         '#F5F5F7',
+    fontSize:      13,
+    opacity:       0.3,
     letterSpacing: '0.1em',
+    margin:        0,
   },
   center: {
     display:        'flex',
@@ -172,7 +202,7 @@ const s = {
     width:        48,
     height:       48,
     borderRadius: '50%',
-    border:       '3px solid #9D7CFF44',
+    border:       '3px solid rgba(157,124,255,0.25)',
     borderTop:    '3px solid #9D7CFF',
     animation:    'spin 0.9s linear infinite',
   },
@@ -197,54 +227,67 @@ const s = {
     backgroundColor: '#111119',
     borderRadius:    12,
     overflow:        'hidden',
-    border:          '1px solid #9D7CFF22',
-    transition:      'border-color 0.2s',
+    border:          '1px solid rgba(157,124,255,0.13)',
   },
   thumb: {
-    position:   'relative',
-    cursor:     'pointer',
-    aspectRatio: '9/16',
-    overflow:   'hidden',
+    position:        'relative',
+    cursor:          'pointer',
+    aspectRatio:     '9/16',
+    overflow:        'hidden',
     backgroundColor: '#000',
   },
   thumbVideo: {
-    width:      '100%',
-    height:     '100%',
-    objectFit:  'cover',
-    display:    'block',
+    width:     '100%',
+    height:    '100%',
+    objectFit: 'cover',
+    display:   'block',
   },
   playOverlay: {
-    position:   'absolute',
-    inset:       0,
-    display:    'flex',
-    alignItems: 'center',
+    position:       'absolute',
+    inset:          0,
+    display:        'flex',
+    alignItems:     'center',
     justifyContent: 'center',
-    fontSize:   32,
-    color:      'rgba(255,255,255,0.8)',
-    background: 'rgba(0,0,0,0.25)',
-    pointerEvents: 'none',
+    fontSize:       32,
+    color:          'rgba(255,255,255,0.85)',
+    background:     'rgba(0,0,0,0.22)',
+    pointerEvents:  'none',
   },
   cardFooter: {
-    padding: '10px 12px',
+    padding:        '10px 12px',
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    gap:            8,
   },
   cardDl: {
-    color:         '#9D7CFF',
-    fontSize:      13,
-    fontWeight:    600,
-    letterSpacing: '0.05em',
-    cursor:        'pointer',
+    color:          '#9D7CFF',
+    fontSize:       13,
+    fontWeight:     600,
+    letterSpacing:  '0.04em',
+    cursor:         'pointer',
     textDecoration: 'none',
-    display:       'block',
+  },
+  cardShare: {
+    background:   'transparent',
+    border:       '1px solid rgba(157,124,255,0.25)',
+    color:        '#9D7CFF',
+    fontSize:     13,
+    fontWeight:   700,
+    padding:      '4px 10px',
+    borderRadius: 8,
+    cursor:       'pointer',
+    flexShrink:   0,
   },
   modal: {
-    position:   'fixed',
-    inset:      0,
-    background: 'rgba(0,0,0,0.88)',
-    display:    'flex',
-    alignItems: 'center',
+    position:       'fixed',
+    inset:          0,
+    background:     'rgba(0,0,0,0.88)',
+    display:        'flex',
+    alignItems:     'center',
     justifyContent: 'center',
-    zIndex:     1000,
-    padding:    16,
+    zIndex:         1000,
+    padding:        16,
   },
   modalInner: {
     width:        '100%',
@@ -252,8 +295,8 @@ const s = {
     background:   '#111119',
     borderRadius: 16,
     overflow:     'hidden',
-    border:       '1.5px solid #9D7CFF44',
-    boxShadow:    '0 0 60px #9D7CFF22',
+    border:       '1.5px solid rgba(157,124,255,0.27)',
+    boxShadow:    '0 0 60px rgba(157,124,255,0.13)',
   },
   modalVideo: {
     width:           '100%',
@@ -262,40 +305,52 @@ const s = {
   },
   modalActions: {
     display:        'flex',
-    gap:            12,
-    padding:        '14px 16px',
+    gap:            8,
+    padding:        '12px 16px',
     alignItems:     'center',
-    justifyContent: 'space-between',
   },
   dlBtn: {
-    flex:            1,
-    display:         'block',
-    textAlign:       'center',
+    flex:           1,
+    display:        'block',
+    textAlign:      'center',
     backgroundColor: '#FF7300',
-    color:           '#fff',
-    fontSize:        14,
-    fontWeight:      700,
-    padding:         '12px 0',
-    borderRadius:    10,
-    cursor:          'pointer',
-    textDecoration:  'none',
+    color:          '#fff',
+    fontSize:       14,
+    fontWeight:     700,
+    padding:        '11px 0',
+    borderRadius:   10,
+    cursor:         'pointer',
+    textDecoration: 'none',
   },
-  closeBtn: {
-    background:   'transparent',
-    border:       '1.5px solid #9D7CFF55',
+  shareBtn: {
+    flex:         1,
+    textAlign:    'center',
+    background:   'rgba(157,124,255,0.1)',
+    border:       '1.5px solid rgba(157,124,255,0.27)',
     color:        '#9D7CFF',
     fontSize:     14,
     fontWeight:   700,
-    padding:      '12px 20px',
+    padding:      '11px 0',
     borderRadius: 10,
     cursor:       'pointer',
   },
+  closeBtn: {
+    background:   'transparent',
+    border:       '1.5px solid rgba(255,255,255,0.12)',
+    color:        'rgba(255,255,255,0.4)',
+    fontSize:     14,
+    fontWeight:   700,
+    padding:      '11px 16px',
+    borderRadius: 10,
+    cursor:       'pointer',
+    flexShrink:   0,
+  },
   footer: {
-    textAlign:   'center',
-    marginTop:   64,
-    color:       '#F5F5F7',
-    fontSize:    12,
-    opacity:     0.25,
+    textAlign:     'center',
+    marginTop:     64,
+    color:         '#F5F5F7',
+    fontSize:      12,
+    opacity:       0.22,
     letterSpacing: '0.08em',
   },
 };

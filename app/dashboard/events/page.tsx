@@ -5,6 +5,7 @@ import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firest
 import { db } from '@/lib/firebase';
 import { useAuth, isLicenseExpired } from '@/components/auth/AuthProvider';
 import CreateEventButton from '@/components/dashboard/CreateEventButton';
+import ShareModal from '@/components/dashboard/ShareModal';
 
 interface FirestoreEvent {
   id: string;
@@ -40,10 +41,11 @@ const StatusBadge = ({ status }: { status: string }) => (
 export default function EventsPage() {
   const { user, profile } = useAuth();
   const expired = isLicenseExpired(profile);
-  const [events,   setEvents]   = useState<FirestoreEvent[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [view,     setView]     = useState<View>('grid');
-  const [search,   setSearch]   = useState('');
+  const [events,      setEvents]      = useState<FirestoreEvent[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [view,        setView]        = useState<View>('grid');
+  const [search,      setSearch]      = useState('');
+  const [shareEvent,  setShareEvent]  = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -77,6 +79,7 @@ export default function EventsPage() {
     : events;
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1280px' }}>
 
       {/* Header */}
@@ -206,14 +209,26 @@ export default function EventsPage() {
                   <p style={{ fontSize: '24px', fontWeight: 900, color: '#ffffff', margin: 0 }}>{ev.videoCount ?? 0}</p>
                   <p style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', margin: 0 }}>Videos</p>
                 </div>
-                <a
-                  href={`/evento/${ev.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ padding: '8px 16px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, color: '#9D7CFF', border: '1px solid rgba(157,124,255,0.3)', textDecoration: 'none' }}
-                >
-                  Ver galería →
-                </a>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => setShareEvent({ id: ev.id, name: ev.name })}
+                    style={{
+                      padding: '8px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 700,
+                      color: '#FF7300', border: '1px solid rgba(255,115,0,0.3)',
+                      background: 'transparent', cursor: 'pointer',
+                    }}
+                  >
+                    Compartir
+                  </button>
+                  <a
+                    href={`/evento/${ev.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ padding: '8px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, color: '#9D7CFF', border: '1px solid rgba(157,124,255,0.3)', textDecoration: 'none' }}
+                  >
+                    Ver galería →
+                  </a>
+                </div>
               </div>
             </div>
           ))}
@@ -227,7 +242,7 @@ export default function EventsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #1E1E35' }}>
-                  {['Evento', 'Fecha', 'Ubicación', 'Videos', 'Estado', 'Acción'].map((h) => (
+                  {['Evento', 'Fecha', 'Ubicación', 'Videos', 'Estado', 'Acciones'].map((h) => (
                     <th key={h} style={{ textAlign: 'left', padding: '14px 20px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', whiteSpace: 'nowrap' }}>
                       {h}
                     </th>
@@ -248,9 +263,21 @@ export default function EventsPage() {
                     <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>{ev.videoCount ?? 0}</td>
                     <td style={{ padding: '14px 20px' }}><StatusBadge status={ev.status} /></td>
                     <td style={{ padding: '14px 20px' }}>
-                      <a href={`/evento/${ev.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: '#9D7CFF', textDecoration: 'none' }}>
-                        Ver galería →
-                      </a>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <button
+                          onClick={() => setShareEvent({ id: ev.id, name: ev.name })}
+                          style={{
+                            padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                            color: '#FF7300', border: '1px solid rgba(255,115,0,0.3)',
+                            background: 'transparent', cursor: 'pointer',
+                          }}
+                        >
+                          Compartir
+                        </button>
+                        <a href={`/evento/${ev.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: '#9D7CFF', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                          Ver galería →
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -260,5 +287,14 @@ export default function EventsPage() {
         </div>
       )}
     </div>
+
+    {shareEvent && (
+      <ShareModal
+        eventId={shareEvent.id}
+        eventName={shareEvent.name}
+        onClose={() => setShareEvent(null)}
+      />
+    )}
+    </>
   );
 }
