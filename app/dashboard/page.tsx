@@ -30,12 +30,33 @@ export default function DashboardPage() {
   const [totalVideos, setTotalVideos] = useState(0);
   const [evLoading, setEvLoading]   = useState(true);
 
-  const license       = LICENSE_MAP[profile?.licenseId ?? 'starter'];
-  const isLifetime     = profile?.licenseStatus === 'lifetime';
-  const isTrial        = profile?.licenseStatus === 'trial';
-  const expired        = isLicenseExpired(profile);
-  const days           = computeDaysRemaining(profile);
-  const displayName    = profile?.displayName || user?.displayName || 'Operador';
+  const license          = LICENSE_MAP[profile?.licenseId ?? 'starter'];
+  const isLifetime       = profile?.licenseStatus === 'lifetime';
+  const isTrial          = profile?.licenseStatus === 'trial';
+  const expired          = isLicenseExpired(profile);
+  const days             = computeDaysRemaining(profile);
+  const displayName      = profile?.displayName || user?.displayName || 'Operador';
+  const showExpiryAlert  = !isLifetime && !expired && days > 0 && days <= 2;
+
+  const [countdown, setCountdown] = useState('');
+
+  useEffect(() => {
+    if (!profile?.expiryDate || !showExpiryAlert) {
+      setCountdown('');
+      return;
+    }
+    const expiryMs = profile.expiryDate.toDate().getTime();
+    const calc = () => {
+      const msLeft = expiryMs - Date.now();
+      if (msLeft <= 0) { setCountdown(''); return; }
+      const h = Math.floor(msLeft / 3_600_000);
+      const m = Math.floor((msLeft % 3_600_000) / 60_000);
+      setCountdown(`${h}h ${m}m`);
+    };
+    calc();
+    const id = setInterval(calc, 60_000);
+    return () => clearInterval(id);
+  }, [profile?.expiryDate, showExpiryAlert]);
 
   useEffect(() => {
     if (!user) return;
@@ -79,6 +100,43 @@ export default function DashboardPage() {
           Aquí está el resumen de tu cuenta G-SPIN 360.
         </p>
       </div>
+
+      {/* Expiry alert — shown when ≤ 48 h remain on the license */}
+      {showExpiryAlert && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: '16px',
+            padding: '16px 20px', borderRadius: '14px',
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.10), rgba(245,158,11,0.07))',
+            border: '1px solid rgba(239,68,68,0.28)',
+          }}
+        >
+          {/* Pulse dot */}
+          <div style={{ position: 'relative', width: '10px', height: '10px', flexShrink: 0 }}>
+            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#EF4444', opacity: 0.4, animation: 'ping 1.2s cubic-bezier(0,0,0.2,1) infinite' }} />
+            <div style={{ position: 'relative', width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444' }} />
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', margin: '0 0 2px' }}>
+              Tu licencia expira pronto
+            </p>
+            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+              {countdown ? `Expira en ${countdown}` : `Quedan ${days} día${days === 1 ? '' : 's'}`}
+              {' · '}
+              <Link href="/dashboard/subscription" style={{ color: '#9D7CFF', textDecoration: 'none', fontWeight: 600 }}>
+                Renovar ahora →
+              </Link>
+            </p>
+          </div>
+
+          {countdown && (
+            <span style={{ fontSize: '22px', fontWeight: 900, color: '#EF4444', flexShrink: 0, letterSpacing: '-0.5px' }}>
+              {countdown}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Stats grid — CSS Grid inline for reliable responsiveness in Tailwind v4 */}
       <div

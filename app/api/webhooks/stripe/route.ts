@@ -72,7 +72,11 @@ export async function POST(req: NextRequest) {
       update.expiryDate = null;
     } else {
       update.licenseStatus = 'active';
-      update.expiryDate = new Date(base.getTime() + license.days * 86_400_000);
+      // Snap to 23:59:59.999 UTC so the license covers the full last day,
+      // regardless of what time of day the purchase was made.
+      const exp = new Date(base.getTime() + license.days * 86_400_000);
+      exp.setUTCHours(23, 59, 59, 999);
+      update.expiryDate = exp;
     }
 
     await userRef.update(update);

@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
   // not from when the migration first ran.
   const baseMs: number = data.createdAt?.toMillis?.() ?? Date.now();
   const expiryDate = new Date(baseMs + 7 * 24 * 60 * 60 * 1000);
+  expiryDate.setUTCHours(23, 59, 59, 999);
 
   await userRef.update({ expiryDate });
 

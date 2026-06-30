@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
-import { sendPasswordResetEmail } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { useAuth, daysRemaining, isLicenseExpired } from '@/components/auth/AuthProvider';
 import { LICENSE_MAP } from '@/lib/licenses';
@@ -11,6 +11,7 @@ import Link from 'next/link';
 
 export default function ProfilePage() {
   const { user, profile } = useAuth();
+  const router = useRouter();
 
   const [name,    setName]    = useState('');
   const [phone,   setPhone]   = useState('');
@@ -19,6 +20,12 @@ export default function ProfilePage() {
   const [saved,   setSaved]   = useState(false);
   const [error,   setError]   = useState('');
   const [resetSent, setResetSent] = useState(false);
+
+  // Delete account modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [confirmText,     setConfirmText]     = useState('');
+  const [deleting,        setDeleting]        = useState(false);
+  const [deleteError,     setDeleteError]     = useState('');
 
   // Initialize form from profile/user once loaded
   useEffect(() => {
@@ -56,6 +63,27 @@ export default function ProfilePage() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!user || confirmText !== 'ELIMINAR') return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? 'Error al eliminar');
+      }
+      router.replace('/register');
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'No se pudo eliminar la cuenta. Intenta de nuevo.');
+      setDeleting(false);
+    }
+  };
+
   const handlePasswordReset = async () => {
     if (!user?.email) return;
     try {
@@ -79,6 +107,7 @@ export default function ProfilePage() {
   };
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '672px' }}>
 
       {/* Title */}
@@ -250,6 +279,108 @@ export default function ProfilePage() {
           )}
         </button>
       </div>
+
+      {/* Danger zone */}
+      <div style={{ padding: '24px', borderRadius: '16px', background: '#0F0F1A', border: '1px solid rgba(239,68,68,0.22)' }}>
+        <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#EF4444', marginBottom: '8px' }}>Zona de peligro</h2>
+        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', margin: '0 0 16px', lineHeight: 1.6 }}>
+          Al eliminar tu cuenta se borrarán permanentemente tus datos y perderás acceso a G-SPIN 360.
+        </p>
+        <button
+          onClick={() => { setShowDeleteModal(true); setConfirmText(''); setDeleteError(''); }}
+          style={{
+            padding: '10px 20px', borderRadius: '12px', fontSize: '14px', fontWeight: 700,
+            color: '#EF4444', background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.28)', cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
+        >
+          Eliminar cuenta
+        </button>
+      </div>
     </div>
+
+    {/* Delete confirmation modal */}
+    {showDeleteModal && (
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+        onClick={(e) => { if (e.target === e.currentTarget) { setShowDeleteModal(false); setConfirmText(''); } }}
+      >
+        <div style={{
+          background: '#0F0F1A', border: '1px solid #1E1E35', borderRadius: '20px',
+          padding: '32px', maxWidth: '440px', width: '100%', margin: '16px',
+        }}>
+          {/* Warning icon */}
+          <div style={{
+            width: '48px', height: '48px', borderRadius: '14px',
+            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px',
+          }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth={1.6} style={{ width: '24px', height: '24px' }}>
+              <path strokeLinecap="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+
+          <h3 style={{ fontSize: '18px', fontWeight: 900, color: '#ffffff', margin: '0 0 8px' }}>
+            ¿Eliminar cuenta?
+          </h3>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: '0 0 24px', lineHeight: 1.6 }}>
+            Esta acción es permanente e irreversible. Se eliminarán todos tus datos, eventos y acceso a G-SPIN 360.
+          </p>
+
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: 'rgba(255,255,255,0.45)' }}>
+            Escribe <strong style={{ color: '#EF4444' }}>ELIMINAR</strong> para confirmar
+          </label>
+          <input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="ELIMINAR"
+            autoComplete="off"
+            style={{
+              width: '100%', padding: '12px 16px', borderRadius: '12px', boxSizing: 'border-box',
+              fontSize: '14px', color: '#ffffff', background: '#16162A', outline: 'none',
+              border: `1px solid ${confirmText === 'ELIMINAR' ? 'rgba(239,68,68,0.6)' : '#1E1E35'}`,
+              marginBottom: '16px',
+            }}
+          />
+
+          {deleteError && (
+            <p style={{ fontSize: '13px', color: '#EF4444', marginBottom: '16px' }}>{deleteError}</p>
+          )}
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => { setShowDeleteModal(false); setConfirmText(''); setDeleteError(''); }}
+              disabled={deleting}
+              style={{
+                flex: 1, padding: '11px', borderRadius: '12px', fontSize: '14px', fontWeight: 600,
+                color: 'rgba(255,255,255,0.6)', background: '#16162A',
+                border: '1px solid #1E1E35', cursor: deleting ? 'default' : 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={deleting || confirmText !== 'ELIMINAR'}
+              style={{
+                flex: 1, padding: '11px', borderRadius: '12px', fontSize: '14px', fontWeight: 700,
+                color: '#ffffff', border: 'none',
+                background: deleting || confirmText !== 'ELIMINAR' ? 'rgba(239,68,68,0.3)' : '#EF4444',
+                cursor: deleting || confirmText !== 'ELIMINAR' ? 'default' : 'pointer',
+              }}
+            >
+              {deleting ? 'Eliminando…' : 'Confirmar eliminación'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
