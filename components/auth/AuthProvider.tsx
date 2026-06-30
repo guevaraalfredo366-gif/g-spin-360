@@ -2,19 +2,37 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import { LicenseId } from '@/lib/licenses';
 
 export interface UserProfile {
   role: 'operator' | 'admin';
-  plan: 'starter' | 'pro' | 'business';
-  subscriptionStatus: 'trial' | 'active' | 'expired' | 'canceled';
-  daysRemaining?: number;
+  licenseId: LicenseId;
+  /** null = no active license OR lifetime (see licenseStatus). */
+  expiryDate?: Timestamp | null;
+  licenseStatus: 'trial' | 'active' | 'expired' | 'lifetime';
   displayName?: string;
   phone?: string;
   company?: string;
   stripeCustomerId?: string;
   activatedAt?: { toDate(): Date } | null;
+}
+
+/** Days left on the current license. Infinity for lifetime, 0 if expired/missing. */
+export function daysRemaining(profile: UserProfile | null): number {
+  if (!profile) return 0;
+  if (profile.licenseStatus === 'lifetime') return Infinity;
+  if (!profile.expiryDate) return 0;
+  const ms = profile.expiryDate.toDate().getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms / 86_400_000));
+}
+
+export function isLicenseExpired(profile: UserProfile | null): boolean {
+  if (!profile) return true;
+  if (profile.licenseStatus === 'lifetime') return false;
+  if (!profile.expiryDate) return true;
+  return profile.expiryDate.toDate().getTime() < Date.now();
 }
 
 interface AuthContextValue {

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 
 export default function RegisterPage() {
@@ -30,19 +30,20 @@ export default function RegisterPage() {
       // Send verification email before writing to Firestore
       await sendEmailVerification(cred.user);
 
-      // Payment fields (role, plan, subscriptionStatus) are set here on creation
-      // but can NEVER be updated by the client again — Firestore rules enforce this
+      // Payment/license fields (role, licenseId, expiryDate, licenseStatus) are set here
+      // on creation but can NEVER be updated by the client again — Firestore rules enforce this.
+      // 7-day G-Spin Starter trial starts immediately at signup.
       await setDoc(doc(db, 'users', cred.user.uid), {
-        uid:                cred.user.uid,
-        email:              cred.user.email,
-        displayName:        form.name.trim(),
-        role:               'operator',
-        plan:               'starter',
-        subscriptionStatus: 'trial',
-        daysRemaining:      7,
-        totalEvents:        0,
-        totalVideos:        0,
-        createdAt:          serverTimestamp(),
+        uid:           cred.user.uid,
+        email:          cred.user.email,
+        displayName:    form.name.trim(),
+        role:           'operator',
+        licenseId:      'starter',
+        licenseStatus:  'trial',
+        expiryDate:     Timestamp.fromMillis(Date.now() + 7 * 86_400_000),
+        totalEvents:    0,
+        totalVideos:    0,
+        createdAt:      serverTimestamp(),
       });
       router.replace('/verify-email');
     } catch (err: any) {

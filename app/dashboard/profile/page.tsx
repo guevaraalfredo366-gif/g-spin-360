@@ -5,14 +5,9 @@ import { updateProfile } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { useAuth } from '@/components/auth/AuthProvider';
+import { useAuth, daysRemaining, isLicenseExpired } from '@/components/auth/AuthProvider';
+import { LICENSE_MAP } from '@/lib/licenses';
 import Link from 'next/link';
-
-const PLAN_LABEL: Record<string, string> = {
-  starter: 'Starter',
-  pro: 'Pro',
-  business: 'Business',
-};
 
 export default function ProfilePage() {
   const { user, profile } = useAuth();
@@ -71,8 +66,9 @@ export default function ProfilePage() {
     }
   };
 
-  const currentPlan    = profile?.plan ?? 'starter';
-  const daysRemaining  = profile?.daysRemaining ?? 0;
+  const currentLicense = LICENSE_MAP[profile?.licenseId ?? 'starter'];
+  const expired        = isLicenseExpired(profile);
+  const days           = daysRemaining(profile);
   const displayName    = profile?.displayName || user?.displayName || 'Operador';
   const avatarInitial  = displayName[0]?.toUpperCase() ?? 'U';
 
@@ -107,12 +103,20 @@ export default function ProfilePage() {
             {user?.email}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: '8px', fontSize: '10px', fontWeight: 700, background: 'rgba(157,124,255,0.12)', color: '#9D7CFF', border: '1px solid rgba(157,124,255,0.2)', textTransform: 'capitalize' }}>
-              Plan {PLAN_LABEL[currentPlan] ?? currentPlan}
+            <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: '8px', fontSize: '10px', fontWeight: 700, background: `${currentLicense.color}1F`, color: currentLicense.color, border: `1px solid ${currentLicense.color}33` }}>
+              {currentLicense.name}
             </span>
-            {currentPlan !== 'starter' && daysRemaining > 0 && (
+            {expired ? (
+              <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: '8px', fontSize: '10px', fontWeight: 700, background: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                Expirada
+              </span>
+            ) : profile?.licenseStatus === 'lifetime' ? (
               <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: '8px', fontSize: '10px', fontWeight: 700, background: 'rgba(34,197,94,0.1)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.2)' }}>
-                {daysRemaining} días restantes
+                Vitalicia
+              </span>
+            ) : days > 0 && (
+              <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: '8px', fontSize: '10px', fontWeight: 700, background: 'rgba(34,197,94,0.1)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.2)' }}>
+                {days} días restantes
               </span>
             )}
           </div>

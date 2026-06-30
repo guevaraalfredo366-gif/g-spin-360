@@ -96,15 +96,15 @@ export default function Sidebar() {
         borderRight: '1px solid #1E1E35',
       }}
     >
-      {/* Logo — 20% larger than original 120px = 144px */}
+      {/* Logo — 50% larger than original 120px = 180px */}
       <div style={{ padding: '20px 20px', borderBottom: '1px solid #1E1E35', display: 'flex', alignItems: 'center' }}>
         <Image
           src="/img/Logo.png"
           alt="G-SPIN 360"
-          width={144}
-          height={46}
+          width={180}
+          height={58}
           className="rounded-xl"
-          style={{ objectFit: 'contain', height: '46px', width: 'auto' }}
+          style={{ objectFit: 'contain', height: '58px', width: 'auto' }}
           priority
         />
       </div>

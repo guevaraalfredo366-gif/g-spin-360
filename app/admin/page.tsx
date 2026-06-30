@@ -2,12 +2,13 @@
 
 import StatsCard from '@/components/dashboard/StatsCard';
 import Link from 'next/link';
+import { LICENSE_MAP } from '@/lib/licenses';
 
 const RECENT_USERS = [
-  { name: 'Carlos Ruiz',  email: 'ops1@gspin.mx',          plan: 'Pro',      days: 18, status: 'Activo' },
-  { name: 'María García', email: 'eventos@corporativo.mx',  plan: 'Business', days: 22, status: 'Activo' },
-  { name: 'Demo User',    email: 'demo@gspin.mx',           plan: 'Starter',  days: 3,  status: 'Por vencer' },
-  { name: 'Ana López',    email: 'nuevo@cliente.mx',        plan: 'Pro',      days: 30, status: 'Nuevo' },
+  { name: 'Carlos Ruiz',  email: 'ops1@gspin.mx',          licenseId: 'pro'      as const, days: 18,  status: 'Activo' },
+  { name: 'María García', email: 'eventos@corporativo.mx', licenseId: 'elite'    as const, days: 240, status: 'Activo' },
+  { name: 'Demo User',    email: 'demo@gspin.mx',          licenseId: 'starter'  as const, days: 3,   status: 'Por vencer' },
+  { name: 'Ana López',    email: 'nuevo@cliente.mx',       licenseId: 'standard' as const, days: 58,  status: 'Nuevo' },
 ];
 
 const STATUS_STYLE: Record<string, React.CSSProperties> = {
@@ -15,8 +16,6 @@ const STATUS_STYLE: Record<string, React.CSSProperties> = {
   'Por vencer': { background: 'rgba(245,158,11,0.1)',  color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)' },
   'Nuevo':      { background: 'rgba(157,124,255,0.1)', color: '#9D7CFF', border: '1px solid rgba(157,124,255,0.2)' },
 };
-
-const PLAN_COLOR: Record<string, string> = { Starter: '#6b7280', Pro: '#9D7CFF', Business: '#FF7300' };
 
 export default function AdminPage() {
   return (
@@ -34,7 +33,7 @@ export default function AdminPage() {
           trend={{ value: '+8.3%', up: true }}
           icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="w-5 h-5"><path strokeLinecap="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
         />
-        <StatsCard title="Suscripciones activas" value="31" subtitle="Pro: 22 · Business: 9" accent="#FF7300"
+        <StatsCard title="Licencias activas" value="31" subtitle="Standard: 14 · Elite: 9 · Pro: 8" accent="#FF7300"
           trend={{ value: '+12%', up: true }}
           icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="w-5 h-5"><path strokeLinecap="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>}
         />
@@ -62,7 +61,7 @@ export default function AdminPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #1E1E35' }}>
-                  {['Operador', 'Plan', 'Días restantes', 'Estado'].map((h) => (
+                  {['Operador', 'Licencia', 'Días restantes', 'Estado'].map((h) => (
                     <th key={h} style={{ textAlign: 'left', padding: '14px 20px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', whiteSpace: 'nowrap' }}>
                       {h}
                     </th>
@@ -89,12 +88,12 @@ export default function AdminPage() {
                       </div>
                     </td>
                     <td style={{ padding: '14px 20px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: 700, color: PLAN_COLOR[u.plan] }}>{u.plan}</span>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: LICENSE_MAP[u.licenseId].color }}>{LICENSE_MAP[u.licenseId].name}</span>
                     </td>
                     <td style={{ padding: '14px 20px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{ width: '64px', height: '6px', borderRadius: '9999px', background: 'rgba(255,255,255,0.08)', flexShrink: 0 }}>
-                          <div style={{ height: '100%', borderRadius: '9999px', width: `${(u.days / 30) * 100}%`, background: u.days <= 5 ? '#F59E0B' : '#9D7CFF' }} />
+                          <div style={{ height: '100%', borderRadius: '9999px', width: `${Math.min(100, (u.days / (LICENSE_MAP[u.licenseId].days ?? u.days)) * 100)}%`, background: u.days <= 5 ? '#F59E0B' : '#9D7CFF' }} />
                         </div>
                         <span style={{ fontSize: '13px', fontWeight: 700, color: u.days <= 5 ? '#F59E0B' : '#ffffff', whiteSpace: 'nowrap' }}>{u.days}d</span>
                       </div>
@@ -115,9 +114,9 @@ export default function AdminPage() {
       {/* Revenue breakdown */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
         {[
-          { label: 'Ingreso Plan Pro',      value: '$32,978', detail: '22 suscriptores', color: '#9D7CFF' },
-          { label: 'Ingreso Plan Business', value: '$35,991', detail: '9 suscriptores',  color: '#FF7300' },
-          { label: 'Pagos pendientes',      value: '$3,200',  detail: '2 facturas',      color: '#F59E0B' },
+          { label: 'Ingreso G-Spin Standard', value: '$11,886', detail: '14 licencias', color: LICENSE_MAP.standard.color },
+          { label: 'Ingreso G-Spin Elite',    value: '$35,991', detail: '9 licencias',  color: LICENSE_MAP.elite.color },
+          { label: 'Pagos pendientes',        value: '$3,200',  detail: '2 facturas',   color: '#F59E0B' },
         ].map((item) => (
           <div
             key={item.label}

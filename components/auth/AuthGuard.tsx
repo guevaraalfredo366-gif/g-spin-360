@@ -25,7 +25,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
       <Sidebar />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <TopBar />
-        <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+        <main style={{ flex: 1, overflowY: 'auto', padding: '36px 40px 56px' }}>
           {children}
         </main>
       </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { LICENSE_MAP, isValidLicenseId } from '@/lib/licenses';
 
 // Prevent Next.js from pre-rendering or statically analyzing this route at build time.
 // Without this, the build tries to instantiate the module and fails because
@@ -42,49 +43,50 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
-    const uid  = session.metadata?.firebaseUid;
-    const plan = (session.metadata?.plan ?? 'pro') as 'pro' | 'business';
+    const uid = session.metadata?.firebaseUid;
+    const licenseIdRaw = session.metadata?.licenseId ?? '';
 
-    if (!uid) {
-      return NextResponse.json({ error: 'Missing firebaseUid in session metadata' }, { status: 400 });
+    if (!uid || !isValidLicenseId(licenseIdRaw)) {
+      return NextResponse.json({ error: 'Missing or invalid metadata in session' }, { status: 400 });
     }
 
+    const license = LICENSE_MAP[licenseIdRaw];
     const now = new Date();
+    const userRef = db.collection('users').doc(uid);
 
-    // Update user subscription status — server-side only via Admin SDK
-    await db.collection('users').doc(uid).update({
-      plan,
-      subscriptionStatus: 'active',
-      stripeCustomerId:   session.customer ?? null,
-      stripeSessionId:    session.id,
-      activatedAt:        now,
-      daysRemaining:      30,
-    });
+    // Stack the purchased days on top of any remaining time — buying early extends, never wastes, the current license.
+    const snap = await userRef.get();
+    const existingExpiry: Date | undefined = snap.exists ? snap.data()?.expiryDate?.toDate?.() : undefined;
+    const base = existingExpiry && existingExpiry.getTime() > now.getTime() ? existingExpiry : now;
+
+    const update: Record<string, unknown> = {
+      licenseId: license.id,
+      stripeCustomerId: session.customer ?? null,
+      stripeSessionId: session.id,
+      lastPurchaseAt: now,
+    };
+
+    if (license.days === null) {
+      // Lifetime license — no expiry to track.
+      update.licenseStatus = 'lifetime';
+      update.expiryDate = null;
+    } else {
+      update.licenseStatus = 'active';
+      update.expiryDate = new Date(base.getTime() + license.days * 86_400_000);
+    }
+
+    await userRef.update(update);
 
     // Record payment in subcollection for billing history display
-    await db
-      .collection('users').doc(uid)
-      .collection('payments').doc(session.id)
-      .set({
-        date:            now,
-        plan,
-        amount:          session.amount_total ?? 0,
-        currency:        session.currency ?? 'mxn',
-        status:          'completed',
-        stripeSessionId: session.id,
-        stripeCustomerId: session.customer ?? null,
-      });
-  }
-
-  if (event.type === 'customer.subscription.deleted') {
-    const sub = event.data.object as Stripe.Subscription;
-    const uid = (sub.metadata as Record<string, string>)?.firebaseUid;
-    if (uid) {
-      await db.collection('users').doc(uid).update({
-        subscriptionStatus: 'canceled',
-        daysRemaining:      0,
-      });
-    }
+    await userRef.collection('payments').doc(session.id).set({
+      date: now,
+      licenseId: license.id,
+      amount: session.amount_total ?? license.priceCents,
+      currency: session.currency ?? 'mxn',
+      status: 'completed',
+      stripeSessionId: session.id,
+      stripeCustomerId: session.customer ?? null,
+    });
   }
 
   return NextResponse.json({ received: true });

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from '@/components/auth/AuthProvider';
+import { useAuth, isLicenseExpired } from '@/components/auth/AuthProvider';
+import CreateEventButton from '@/components/dashboard/CreateEventButton';
 
 interface FirestoreEvent {
   id: string;
@@ -37,7 +38,8 @@ const StatusBadge = ({ status }: { status: string }) => (
 );
 
 export default function EventsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const expired = isLicenseExpired(profile);
   const [events,   setEvents]   = useState<FirestoreEvent[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [view,     setView]     = useState<View>('grid');
@@ -86,6 +88,8 @@ export default function EventsPage() {
           </p>
         </div>
 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <CreateEventButton expired={expired} />
         {/* Grid / List toggle */}
         <div style={{ display: 'flex', padding: '4px', borderRadius: '12px', background: '#0F0F1A', border: '1px solid #1E1E35' }}>
           {([
@@ -114,7 +118,16 @@ export default function EventsPage() {
             </button>
           ))}
         </div>
+        </div>
       </div>
+
+      {/* Expired license banner */}
+      {expired && (
+        <div style={{ padding: '14px 20px', borderRadius: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#EF4444', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <span>⚠ Tu licencia ha expirado. No puedes crear eventos ni conectar la app de grabación hasta renovar.</span>
+          <a href="/dashboard/subscription" style={{ color: '#EF4444', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Renovar ahora →</a>
+        </div>
+      )}
 
       {/* Search */}
       <div style={{ position: 'relative' }}>

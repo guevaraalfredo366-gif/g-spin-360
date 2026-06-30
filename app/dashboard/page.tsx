@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from '@/components/auth/AuthProvider';
+import { useAuth, daysRemaining as computeDaysRemaining, isLicenseExpired } from '@/components/auth/AuthProvider';
+import { LICENSE_MAP } from '@/lib/licenses';
 import StatsCard from '@/components/dashboard/StatsCard';
+import CreateEventButton from '@/components/dashboard/CreateEventButton';
 import Link from 'next/link';
 
 interface FirestoreEvent {
@@ -17,18 +19,6 @@ interface FirestoreEvent {
   status: string;
 }
 
-const PLAN_LABEL: Record<string, string> = {
-  starter: 'Starter',
-  pro:     'Pro',
-  business: 'Business',
-};
-
-const PLAN_ACCENT: Record<string, string> = {
-  starter:  '#6b7280',
-  pro:      '#9D7CFF',
-  business: '#FF7300',
-};
-
 function formatTs(ts: Timestamp | undefined): string {
   if (!ts?.toDate) return '—';
   return ts.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -40,11 +30,11 @@ export default function DashboardPage() {
   const [totalVideos, setTotalVideos] = useState(0);
   const [evLoading, setEvLoading]   = useState(true);
 
-  const plan          = profile?.plan ?? 'starter';
-  const daysRemaining = profile?.daysRemaining ?? 0;
-  const planLabel     = PLAN_LABEL[plan] ?? plan;
-  const planAccent    = PLAN_ACCENT[plan] ?? '#6b7280';
-  const displayName   = profile?.displayName || user?.displayName || 'Operador';
+  const license       = LICENSE_MAP[profile?.licenseId ?? 'starter'];
+  const isLifetime     = profile?.licenseStatus === 'lifetime';
+  const expired        = isLicenseExpired(profile);
+  const days           = computeDaysRemaining(profile);
+  const displayName    = profile?.displayName || user?.displayName || 'Operador';
 
   useEffect(() => {
     if (!user) return;
@@ -72,7 +62,7 @@ export default function DashboardPage() {
   const recentEvents = events.slice(0, 5);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1280px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', maxWidth: '1280px' }}>
 
       {/* Welcome */}
       <div>
@@ -84,8 +74,8 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Stats grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+      {/* Stats grid — explicit breakpoints guarantee responsiveness down to mobile widths */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatsCard
           title="Eventos totales"
           value={evLoading ? '—' : String(events.length)}
@@ -110,9 +100,9 @@ export default function DashboardPage() {
         />
         <StatsCard
           title="Días restantes"
-          value={plan === 'starter' ? 'Starter' : String(daysRemaining)}
-          subtitle={plan === 'starter' ? 'Plan gratuito activo' : `Plan ${planLabel} activo`}
-          accent="#22C55E"
+          value={isLifetime ? '∞' : expired ? 'Expirada' : String(days)}
+          subtitle={isLifetime ? 'Acceso vitalicio' : expired ? 'Renueva tu licencia' : `Vence el ${profile?.expiryDate?.toDate ? profile.expiryDate.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : '—'}`}
+          accent={expired ? '#EF4444' : '#22C55E'}
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="w-5 h-5">
               <path strokeLinecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -120,16 +110,10 @@ export default function DashboardPage() {
           }
         />
         <StatsCard
-          title="Plan actual"
-          value={planLabel}
-          subtitle={
-            profile?.subscriptionStatus === 'active'
-              ? 'Suscripción activa'
-              : plan === 'starter'
-                ? 'Sin suscripción'
-                : 'Pendiente'
-          }
-          accent={planAccent}
+          title="Licencia actual"
+          value={license.name.replace('G-Spin ', '')}
+          subtitle={isLifetime ? 'Vitalicia' : expired ? 'Expirada — requiere compra' : 'Activa'}
+          accent={license.color}
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="w-5 h-5">
               <path strokeLinecap="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
@@ -140,11 +124,14 @@ export default function DashboardPage() {
 
       {/* Recent events */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', margin: 0 }}>Eventos recientes</h2>
-          <Link href="/dashboard/events" style={{ fontSize: '12px', fontWeight: 500, color: '#9D7CFF', textDecoration: 'none' }}>
-            Ver todos →
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <CreateEventButton expired={expired} />
+            <Link href="/dashboard/events" style={{ fontSize: '12px', fontWeight: 500, color: '#9D7CFF', textDecoration: 'none' }}>
+              Ver todos →
+            </Link>
+          </div>
         </div>
 
         <div style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid #1E1E35', background: '#0F0F1A' }}>
@@ -215,9 +202,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div>
+      <div style={{ marginTop: '8px' }}>
         <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', marginBottom: '16px' }}>Acciones rápidas</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {[
             { label: 'Ver mis eventos',     href: '/dashboard/events',       color: '#9D7CFF', desc: 'Gestiona todos tus videos 360°' },
             { label: 'Gestionar membresía', href: '/dashboard/subscription', color: '#FF7300', desc: 'Planes y facturación' },

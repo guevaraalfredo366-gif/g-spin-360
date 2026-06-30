@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { LICENSES, LICENSE_MAP, LicenseId } from '@/lib/licenses';
 
-const USERS = [
-  { name: 'Carlos Ruiz',     email: 'ops1@gspin.mx',          plan: 'Pro',      days: 18, events: 8,  videos: 342,  status: 'Activo',     joined: '01 Ene 2026' },
-  { name: 'María García',    email: 'eventos@corporativo.mx',  plan: 'Business', days: 22, events: 15, videos: 890,  status: 'Activo',     joined: '15 Feb 2026' },
-  { name: 'Demo User',       email: 'demo@gspin.mx',           plan: 'Starter',  days: 3,  events: 2,  videos: 47,   status: 'Por vencer', joined: '01 Jun 2026' },
-  { name: 'Ana López',       email: 'nuevo@cliente.mx',        plan: 'Pro',      days: 30, events: 0,  videos: 0,    status: 'Nuevo',      joined: '25 Jun 2026' },
-  { name: 'Roberto Sánchez', email: 'roberto@eventospro.com',  plan: 'Business', days: 14, events: 22, videos: 1204, status: 'Activo',     joined: '10 Mar 2026' },
-  { name: 'Lucía Morales',   email: 'lucia@celebrations.mx',   plan: 'Pro',      days: 0,  events: 5,  videos: 178,  status: 'Expirado',   joined: '15 Abr 2026' },
+const USERS: { name: string; email: string; licenseId: LicenseId; days: number; events: number; videos: number; status: string; joined: string }[] = [
+  { name: 'Carlos Ruiz',     email: 'ops1@gspin.mx',          licenseId: 'pro',      days: 18,  events: 8,  videos: 342,  status: 'Activo',     joined: '01 Ene 2026' },
+  { name: 'María García',    email: 'eventos@corporativo.mx', licenseId: 'elite',    days: 240, events: 15, videos: 890,  status: 'Activo',     joined: '15 Feb 2026' },
+  { name: 'Demo User',       email: 'demo@gspin.mx',          licenseId: 'starter',  days: 3,   events: 2,  videos: 47,   status: 'Por vencer', joined: '01 Jun 2026' },
+  { name: 'Ana López',       email: 'nuevo@cliente.mx',       licenseId: 'standard', days: 58,  events: 0,  videos: 0,    status: 'Nuevo',      joined: '25 Jun 2026' },
+  { name: 'Roberto Sánchez', email: 'roberto@eventospro.com', licenseId: 'max',      days: 1080,events: 22, videos: 1204, status: 'Activo',     joined: '10 Mar 2026' },
+  { name: 'Lucía Morales',   email: 'lucia@celebrations.mx',  licenseId: 'basic',    days: 0,   events: 5,  videos: 178,  status: 'Expirado',   joined: '15 Abr 2026' },
 ];
 
 const STATUS_STYLE: Record<string, React.CSSProperties> = {
@@ -18,16 +19,16 @@ const STATUS_STYLE: Record<string, React.CSSProperties> = {
   'Expirado':   { background: 'rgba(239,68,68,0.1)',   color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' },
 };
 
-const PLAN_COLOR: Record<string, string> = { Starter: '#6b7280', Pro: '#9D7CFF', Business: '#FF7300' };
+const LICENSE_FILTERS = ['Todos', ...LICENSES.map((l) => l.name)];
 
 export default function AdminUsersPage() {
-  const [search,     setSearch]     = useState('');
-  const [planFilter, setPlanFilter] = useState('Todos');
+  const [search,        setSearch]        = useState('');
+  const [licenseFilter, setLicenseFilter] = useState('Todos');
 
   const filtered = USERS.filter((u) => {
-    const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
-    const matchPlan   = planFilter === 'Todos' || u.plan === planFilter;
-    return matchSearch && matchPlan;
+    const matchSearch  = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
+    const matchLicense = licenseFilter === 'Todos' || LICENSE_MAP[u.licenseId].name === licenseFilter;
+    return matchSearch && matchLicense;
   });
 
   return (
@@ -92,12 +93,12 @@ export default function AdminUsersPage() {
           />
         </div>
 
-        {/* Plan filter tabs */}
-        <div style={{ display: 'flex', padding: '4px', borderRadius: '12px', background: '#0F0F1A', border: '1px solid #1E1E35', flexShrink: 0 }}>
-          {['Todos', 'Starter', 'Pro', 'Business'].map((p) => (
+        {/* License filter tabs */}
+        <div style={{ display: 'flex', padding: '4px', borderRadius: '12px', background: '#0F0F1A', border: '1px solid #1E1E35', flexShrink: 0, overflowX: 'auto' }}>
+          {LICENSE_FILTERS.map((p) => (
             <button
               key={p}
-              onClick={() => setPlanFilter(p)}
+              onClick={() => setLicenseFilter(p)}
               style={{
                 padding: '6px 14px',
                 borderRadius: '8px',
@@ -106,8 +107,9 @@ export default function AdminUsersPage() {
                 border: 'none',
                 cursor: 'pointer',
                 transition: 'all 0.15s',
-                background: planFilter === p ? 'rgba(157,124,255,0.15)' : 'transparent',
-                color:       planFilter === p ? '#9D7CFF' : 'rgba(255,255,255,0.4)',
+                whiteSpace: 'nowrap',
+                background: licenseFilter === p ? 'rgba(157,124,255,0.15)' : 'transparent',
+                color:       licenseFilter === p ? '#9D7CFF' : 'rgba(255,255,255,0.4)',
               }}
             >
               {p}
@@ -122,7 +124,7 @@ export default function AdminUsersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #1E1E35' }}>
-                {['Operador', 'Plan', 'Días restantes', 'Eventos', 'Videos', 'Estado', 'Miembro desde', 'Acciones'].map((h) => (
+                {['Operador', 'Licencia', 'Días restantes', 'Eventos', 'Videos', 'Estado', 'Miembro desde', 'Acciones'].map((h) => (
                   <th key={h} style={{ textAlign: 'left', padding: '14px 20px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
@@ -150,16 +152,16 @@ export default function AdminUsersPage() {
                     </div>
                   </td>
 
-                  {/* Plan */}
+                  {/* Licencia */}
                   <td style={{ padding: '14px 20px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 700, color: PLAN_COLOR[user.plan] }}>{user.plan}</span>
+                    <span style={{ fontSize: '14px', fontWeight: 700, color: LICENSE_MAP[user.licenseId].color }}>{LICENSE_MAP[user.licenseId].name}</span>
                   </td>
 
                   {/* Days */}
                   <td style={{ padding: '14px 20px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{ width: '56px', height: '6px', borderRadius: '9999px', background: 'rgba(255,255,255,0.08)', flexShrink: 0 }}>
-                        <div style={{ height: '100%', borderRadius: '9999px', width: `${Math.min(100, (user.days / 30) * 100)}%`, background: user.days <= 5 ? '#F59E0B' : '#9D7CFF' }} />
+                        <div style={{ height: '100%', borderRadius: '9999px', width: `${Math.min(100, (user.days / (LICENSE_MAP[user.licenseId].days ?? (user.days || 1))) * 100)}%`, background: user.days <= 5 ? '#F59E0B' : '#9D7CFF' }} />
                       </div>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: user.days <= 5 ? '#F59E0B' : '#ffffff', whiteSpace: 'nowrap' }}>{user.days}d</span>
                     </div>
