@@ -1,27 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { adminDb } from '@/lib/firebase-admin';
+import { getAdminDb } from '@/lib/firebase-admin';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-06-24.dahlia',
-});
+// Prevent Next.js from pre-rendering or statically analyzing this route at build time.
+// Without this, the build tries to instantiate the module and fails because
+// STRIPE_SECRET_KEY / FIREBASE_ADMIN_SERVICE_ACCOUNT are only available at runtime.
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-// Must use raw body — NOT req.json() — so Stripe can verify the HMAC signature
+function getStripe(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('Missing env var: STRIPE_SECRET_KEY');
+  return new Stripe(key, { apiVersion: '2026-06-24.dahlia' });
+}
+
 export async function POST(req: NextRequest) {
+  // req.text() is always safe to call on a NextRequest, but guard anyway
   const body = await req.text();
-  const sig  = req.headers.get('stripe-signature');
+  if (!body) {
+    return NextResponse.json({ error: 'Empty request body' }, { status: 400 });
+  }
 
+  const sig = req.headers.get('stripe-signature');
   if (!sig) {
     return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 });
   }
 
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
+  }
+
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+    event = getStripe().webhooks.constructEvent(body, sig, secret);
   } catch {
-    // Invalid signature — reject the request to block spoofed events
     return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 });
   }
+
+  const db = getAdminDb();
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
@@ -32,11 +49,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing firebaseUid in session metadata' }, { status: 400 });
     }
 
-    // Write happens server-side via Admin SDK — clients can never elevate their own plan
-    await adminDb.collection('users').doc(uid).update({
+    await db.collection('users').doc(uid).update({
       plan,
       subscriptionStatus: 'active',
-      stripeCustomerId:   session.customer   ?? null,
+      stripeCustomerId:   session.customer ?? null,
       stripeSessionId:    session.id,
       activatedAt:        new Date(),
     });
@@ -46,7 +62,7 @@ export async function POST(req: NextRequest) {
     const sub = event.data.object as Stripe.Subscription;
     const uid = (sub.metadata as Record<string, string>)?.firebaseUid;
     if (uid) {
-      await adminDb.collection('users').doc(uid).update({
+      await db.collection('users').doc(uid).update({
         subscriptionStatus: 'canceled',
       });
     }
