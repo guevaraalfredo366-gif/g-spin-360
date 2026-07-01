@@ -1,28 +1,43 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  deleteDoc,
+  doc,
+  Timestamp,
+} from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth, isLicenseExpired } from '@/components/auth/AuthProvider';
 import CreateEventButton from '@/components/dashboard/CreateEventButton';
 import ShareModal from '@/components/dashboard/ShareModal';
+import EventModal, { EventData } from '@/components/dashboard/EventModal';
 
-interface FirestoreEvent {
-  id: string;
-  name: string;
-  date: Timestamp;
-  createdAt?: Timestamp;
-  location?: string;
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface FirestoreEvent extends EventData {
+  date?:       Timestamp;
   videoCount?: number;
-  status: string;
 }
 
-type View = 'grid' | 'list';
+type ViewMode = 'grid' | 'list';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatTs(ts: Timestamp | undefined): string {
   if (!ts?.toDate) return '—';
   return ts.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
 }
+
+function formatEventDate(ev: FirestoreEvent): string {
+  const ts = ev.eventDate ?? ev.date;
+  return ts ? formatTs(ts) : '—';
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 const StatusBadge = ({ status }: { status: string }) => (
   <span
@@ -38,14 +53,33 @@ const StatusBadge = ({ status }: { status: string }) => (
   </span>
 );
 
+const IconBtn = ({ label, onClick, color = '#9D7CFF' }: { label: string; onClick: () => void; color?: string }) => (
+  <button
+    onClick={onClick}
+    style={{
+      padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+      color, border: `1px solid ${color}40`,
+      background: 'transparent', cursor: 'pointer',
+    }}
+  >
+    {label}
+  </button>
+);
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function EventsPage() {
   const { user, profile } = useAuth();
   const expired = isLicenseExpired(profile);
+
   const [events,      setEvents]      = useState<FirestoreEvent[]>([]);
   const [loading,     setLoading]     = useState(true);
-  const [view,        setView]        = useState<View>('grid');
+  const [view,        setView]        = useState<ViewMode>('grid');
   const [search,      setSearch]      = useState('');
   const [shareEvent,  setShareEvent]  = useState<{ id: string; name: string } | null>(null);
+  const [editEvent,   setEditEvent]   = useState<FirestoreEvent | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<FirestoreEvent | null>(null);
+  const [deleting,    setDeleting]    = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -63,18 +97,29 @@ export default function EventsPage() {
         setEvents(docs);
         setLoading(false);
       },
-      () => setLoading(false)
+      () => setLoading(false),
     );
     return unsub;
   }, [user]);
 
-  // Sanitize search input — only use as a display filter, never in DB queries
+  async function handleDelete(ev: FirestoreEvent) {
+    setDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'events', ev.id));
+      setConfirmDelete(null);
+    } catch {
+      // onSnapshot handles list update on success
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const safeSearch = search.trim().toLowerCase();
-  const filtered = safeSearch
+  const filtered   = safeSearch
     ? events.filter(
         (e) =>
           e.name.toLowerCase().includes(safeSearch) ||
-          (e.location ?? '').toLowerCase().includes(safeSearch)
+          (e.eventLocation ?? e.id).toLowerCase().includes(safeSearch),
       )
     : events;
 
@@ -92,35 +137,35 @@ export default function EventsPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <CreateEventButton expired={expired} />
-        {/* Grid / List toggle */}
-        <div style={{ display: 'flex', padding: '4px', borderRadius: '12px', background: '#0F0F1A', border: '1px solid #1E1E35' }}>
-          {([
-            ['grid', (
-              <svg key="g" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ width: '16px', height: '16px' }}>
-                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-              </svg>
-            )],
-            ['list', (
-              <svg key="l" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ width: '16px', height: '16px' }}>
-                <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )],
-          ] as [View, React.ReactNode][]).map(([key, icon]) => (
-            <button
-              key={key}
-              onClick={() => setView(key)}
-              style={{
-                padding: '8px', borderRadius: '8px', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                background: view === key ? 'rgba(157,124,255,0.15)' : 'transparent',
-                color:      view === key ? '#9D7CFF' : 'rgba(255,255,255,0.35)',
-              }}
-            >
-              {icon}
-            </button>
-          ))}
-        </div>
+          <CreateEventButton expired={expired} />
+          {/* Grid / List toggle */}
+          <div style={{ display: 'flex', padding: '4px', borderRadius: '12px', background: '#0F0F1A', border: '1px solid #1E1E35' }}>
+            {([
+              ['grid', (
+                <svg key="g" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ width: '16px', height: '16px' }}>
+                  <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+              )],
+              ['list', (
+                <svg key="l" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ width: '16px', height: '16px' }}>
+                  <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )],
+            ] as [ViewMode, React.ReactNode][]).map(([key, icon]) => (
+              <button
+                key={key}
+                onClick={() => setView(key)}
+                style={{
+                  padding: '8px', borderRadius: '8px', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                  background: view === key ? 'rgba(157,124,255,0.15)' : 'transparent',
+                  color:      view === key ? '#9D7CFF' : 'rgba(255,255,255,0.35)',
+                }}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -134,8 +179,7 @@ export default function EventsPage() {
 
       {/* Search */}
       <div style={{ position: 'relative' }}>
-        <svg
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
           style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}
         >
           <path strokeLinecap="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -146,37 +190,23 @@ export default function EventsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           maxLength={100}
-          style={{
-            width: '100%', paddingLeft: '44px', paddingRight: '16px',
-            paddingTop: '12px', paddingBottom: '12px',
-            borderRadius: '12px', fontSize: '14px', color: '#ffffff',
-            background: '#0F0F1A', border: '1px solid #1E1E35', outline: 'none', boxSizing: 'border-box',
-          }}
+          style={{ width: '100%', paddingLeft: '44px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px', borderRadius: '12px', fontSize: '14px', color: '#ffffff', background: '#0F0F1A', border: '1px solid #1E1E35', outline: 'none', boxSizing: 'border-box' }}
           onFocus={(e) => (e.currentTarget.style.borderColor = '#9D7CFF')}
           onBlur={(e)  => (e.currentTarget.style.borderColor = '#1E1E35')}
         />
       </div>
 
-      {/* Loading */}
       {loading && (
-        <div style={{ padding: '64px', textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.25)' }}>
-          Cargando eventos…
-        </div>
+        <div style={{ padding: '64px', textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.25)' }}>Cargando eventos…</div>
       )}
 
-      {/* Empty state */}
       {!loading && events.length === 0 && (
         <div style={{ padding: '64px', textAlign: 'center', borderRadius: '16px', background: '#0F0F1A', border: '1px solid #1E1E35' }}>
-          <p style={{ fontSize: '15px', fontWeight: 600, color: 'rgba(255,255,255,0.4)', marginBottom: '8px' }}>
-            Aún no tienes eventos registrados.
-          </p>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.2)' }}>
-            Los eventos se crean desde la app G-SPIN 360.
-          </p>
+          <p style={{ fontSize: '15px', fontWeight: 600, color: 'rgba(255,255,255,0.4)', marginBottom: '8px' }}>Aún no tienes eventos registrados.</p>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.2)' }}>Crea tu primer evento con el botón de arriba.</p>
         </div>
       )}
 
-      {/* No search results */}
       {!loading && events.length > 0 && filtered.length === 0 && (
         <div style={{ padding: '48px', textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.3)' }}>
           Sin resultados para "{search}"
@@ -197,39 +227,33 @@ export default function EventsPage() {
                 <div style={{ width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', background: 'rgba(157,124,255,0.1)' }}>
                   🎭
                 </div>
-                <StatusBadge status={ev.status} />
+                <StatusBadge status={ev.status ?? 'Activo'} />
               </div>
 
               <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', marginBottom: '4px' }}>{ev.name}</h3>
-              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '2px' }}>{formatTs(ev.date)}</p>
-              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', marginBottom: '20px' }}>{ev.location ?? '—'}</p>
+              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '2px' }}>{formatEventDate(ev)}</p>
+              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', marginBottom: '20px' }}>{ev.eventLocation ?? '—'}</p>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', borderTop: '1px solid #1E1E35' }}>
                 <div>
                   <p style={{ fontSize: '24px', fontWeight: 900, color: '#ffffff', margin: 0 }}>{ev.videoCount ?? 0}</p>
                   <p style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', margin: 0 }}>Videos</p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => setShareEvent({ id: ev.id, name: ev.name })}
-                    style={{
-                      padding: '8px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 700,
-                      color: '#FF7300', border: '1px solid rgba(255,115,0,0.3)',
-                      background: 'transparent', cursor: 'pointer',
-                    }}
-                  >
-                    Compartir
-                  </button>
-                  <a
-                    href={`/evento/${ev.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ padding: '8px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, color: '#9D7CFF', border: '1px solid rgba(157,124,255,0.3)', textDecoration: 'none' }}
-                  >
-                    Ver galería →
-                  </a>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <IconBtn label="Editar" onClick={() => setEditEvent(ev)} color="#9D7CFF" />
+                  <IconBtn label="Compartir" onClick={() => setShareEvent({ id: ev.id, name: ev.name })} color="#FF7300" />
+                  <IconBtn label="Eliminar" onClick={() => setConfirmDelete(ev)} color="#EF4444" />
                 </div>
               </div>
+
+              <a
+                href={`/evento/${ev.id}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'block', marginTop: '12px', padding: '8px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, color: '#9D7CFF', border: '1px solid rgba(157,124,255,0.2)', textDecoration: 'none', textAlign: 'center' }}
+              >
+                Ver galería →
+              </a>
             </div>
           ))}
         </div>
@@ -258,25 +282,18 @@ export default function EventsPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
                     <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 500, color: '#ffffff', whiteSpace: 'nowrap' }}>{ev.name}</td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{formatTs(ev.date)}</td>
-                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{ev.location ?? '—'}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{formatEventDate(ev)}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{ev.eventLocation ?? '—'}</td>
                     <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>{ev.videoCount ?? 0}</td>
-                    <td style={{ padding: '14px 20px' }}><StatusBadge status={ev.status} /></td>
+                    <td style={{ padding: '14px 20px' }}><StatusBadge status={ev.status ?? 'Activo'} /></td>
                     <td style={{ padding: '14px 20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <button
-                          onClick={() => setShareEvent({ id: ev.id, name: ev.name })}
-                          style={{
-                            padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
-                            color: '#FF7300', border: '1px solid rgba(255,115,0,0.3)',
-                            background: 'transparent', cursor: 'pointer',
-                          }}
-                        >
-                          Compartir
-                        </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <IconBtn label="Editar" onClick={() => setEditEvent(ev)} color="#9D7CFF" />
+                        <IconBtn label="Compartir" onClick={() => setShareEvent({ id: ev.id, name: ev.name })} color="#FF7300" />
                         <a href={`/evento/${ev.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: '#9D7CFF', textDecoration: 'none', whiteSpace: 'nowrap' }}>
                           Ver galería →
                         </a>
+                        <IconBtn label="Eliminar" onClick={() => setConfirmDelete(ev)} color="#EF4444" />
                       </div>
                     </td>
                   </tr>
@@ -288,12 +305,58 @@ export default function EventsPage() {
       )}
     </div>
 
+    {/* ── Modals ─────────────────────────────────────────────────────────────── */}
+
     {shareEvent && (
       <ShareModal
         eventId={shareEvent.id}
         eventName={shareEvent.name}
         onClose={() => setShareEvent(null)}
       />
+    )}
+
+    {editEvent && (
+      <EventModal
+        mode="edit"
+        event={editEvent}
+        onClose={() => setEditEvent(null)}
+      />
+    )}
+
+    {/* Delete confirmation overlay */}
+    {confirmDelete && (
+      <div
+        onClick={() => setConfirmDelete(null)}
+        style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ width: '100%', maxWidth: '380px', borderRadius: '20px', background: '#0F0F1A', border: '1px solid rgba(239,68,68,0.3)', padding: '28px' }}
+        >
+          <p style={{ fontSize: '22px', textAlign: 'center', marginBottom: '8px' }}>🗑️</p>
+          <h2 style={{ fontSize: '17px', fontWeight: 800, color: '#ffffff', textAlign: 'center', marginBottom: '10px' }}>Eliminar evento</h2>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginBottom: '24px', lineHeight: 1.6 }}>
+            ¿Eliminar <strong style={{ color: '#ffffff' }}>{confirmDelete.name}</strong>?
+            <br />
+            Esta acción no se puede deshacer.
+          </p>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={() => setConfirmDelete(null)}
+              style={{ flex: 1, padding: '12px', borderRadius: '12px', fontSize: '13px', fontWeight: 600, background: 'transparent', border: '1px solid #1E1E35', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => handleDelete(confirmDelete)}
+              disabled={deleting}
+              style={{ flex: 1, padding: '12px', borderRadius: '12px', fontSize: '13px', fontWeight: 700, border: 'none', color: '#ffffff', cursor: deleting ? 'default' : 'pointer', background: deleting ? 'rgba(239,68,68,0.5)' : '#EF4444' }}
+            >
+              {deleting ? 'Eliminando…' : 'Sí, eliminar'}
+            </button>
+          </div>
+        </div>
+      </div>
     )}
     </>
   );
