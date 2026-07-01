@@ -7,27 +7,70 @@ import { db } from '../../../lib/firebase';
 export default function EventoPage({ params }) {
   const { id: idEvento } = use(params);
 
-  const [event,    setEvent]    = useState(null); // { name, date, location }
+  const [event,    setEvent]    = useState(null);
   const [videos,   setVideos]   = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [active,   setActive]   = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [access,   setAccess]   = useState(null); // null=checking, 'open', 'closed', 'not-started', 'ended'
 
   useEffect(() => {
     (async () => {
       try {
+        // ── Load event ────────────────────────────────────────────────────
         const eventSnap = await getDoc(doc(db, 'events', idEvento));
-        if (eventSnap.exists()) setEvent(eventSnap.data());
+        if (!eventSnap.exists()) {
+          setAccess('closed');
+          setLoading(false);
+          return;
+        }
+        const eventData = eventSnap.data();
+        setEvent(eventData);
 
+        // ── Access gate 1: gallery open flag ─────────────────────────────
+        if (!eventData.isGalleryOpen) {
+          setAccess('closed');
+          setLoading(false);
+          return;
+        }
+
+        // ── Access gate 2: time window ────────────────────────────────────
+        const now = new Date();
+        if (eventData.startTime) {
+          const start = eventData.startTime?.toDate
+            ? eventData.startTime.toDate()
+            : new Date(eventData.startTime);
+          if (now < start) {
+            setAccess('not-started');
+            setLoading(false);
+            return;
+          }
+        }
+        if (eventData.endTime) {
+          const end = eventData.endTime?.toDate
+            ? eventData.endTime.toDate()
+            : new Date(eventData.endTime);
+          if (now > end) {
+            setAccess('ended');
+            setLoading(false);
+            return;
+          }
+        }
+
+        setAccess('open');
+
+        // ── Load visible videos only ──────────────────────────────────────
         const q = query(
           collection(db, 'videos'),
           where('idEvento', '==', idEvento),
+          where('isHidden', '==', false),
           orderBy('createdAt', 'desc'),
         );
         const snap = await getDocs(q);
         setVideos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error(err);
+        setAccess('open'); // don't block on Firestore errors
       } finally {
         setLoading(false);
       }
@@ -45,11 +88,11 @@ export default function EventoPage({ params }) {
       try {
         await navigator.share({
           title: 'Mi video G-SPIN 360',
-          text: `Mira mi video del evento ${event?.name ?? ''}`,
-          url: videoPageUrl,
+          text:  `Mira mi video del evento ${event?.name ?? ''}`,
+          url:   videoPageUrl,
         });
         return;
-      } catch { /* user cancelled or API not supported */ }
+      } catch { /* user cancelled */ }
     }
     try {
       await navigator.clipboard.writeText(videoPageUrl);
@@ -61,8 +104,72 @@ export default function EventoPage({ params }) {
   const eventDate = event?.date?.toDate
     ? event.date.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
     : null;
-
   const metaLine = [eventDate, event?.location].filter(Boolean).join(' · ');
+
+  // ── Blocked states ────────────────────────────────────────────────────────
+
+  if (!loading && access === 'closed') {
+    return (
+      <div style={s.page}>
+        <div style={s.header}>
+          <h1 style={s.brand}>G-SPIN 360</h1>
+          <h2 style={s.eventName}>{event?.name ?? idEvento}</h2>
+        </div>
+        <div style={s.gateBox}>
+          <div style={s.gateIcon}>◎</div>
+          <p style={s.gateTitle}>Galería cerrada</p>
+          <p style={s.gateDesc}>
+            Este evento está cerrado actualmente.{' '}
+            Espera a que el anfitrión abra la galería.
+          </p>
+        </div>
+        <p style={s.footer}>G-SPIN 360 · Galería del evento</p>
+      </div>
+    );
+  }
+
+  if (!loading && access === 'not-started') {
+    const start = event?.startTime?.toDate?.()?.toLocaleDateString('es-MX', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+    return (
+      <div style={s.page}>
+        <div style={s.header}>
+          <h1 style={s.brand}>G-SPIN 360</h1>
+          <h2 style={s.eventName}>{event?.name ?? idEvento}</h2>
+        </div>
+        <div style={s.gateBox}>
+          <div style={s.gateIcon}>◈</div>
+          <p style={s.gateTitle}>El evento aún no ha comenzado</p>
+          <p style={s.gateDesc}>
+            La galería estará disponible a partir del {start ?? 'la fecha de inicio del evento'}.
+          </p>
+        </div>
+        <p style={s.footer}>G-SPIN 360 · Galería del evento</p>
+      </div>
+    );
+  }
+
+  if (!loading && access === 'ended') {
+    return (
+      <div style={s.page}>
+        <div style={s.header}>
+          <h1 style={s.brand}>G-SPIN 360</h1>
+          <h2 style={s.eventName}>{event?.name ?? idEvento}</h2>
+        </div>
+        <div style={s.gateBox}>
+          <div style={s.gateIcon}>◉</div>
+          <p style={s.gateTitle}>Evento finalizado</p>
+          <p style={s.gateDesc}>
+            La galería de este evento ya no está disponible al público.
+          </p>
+        </div>
+        <p style={s.footer}>G-SPIN 360 · Galería del evento</p>
+      </div>
+    );
+  }
+
+  // ── Open gallery ──────────────────────────────────────────────────────────
 
   return (
     <div style={s.page}>
@@ -206,16 +313,47 @@ const s = {
     borderTop:    '3px solid #9D7CFF',
     animation:    'spin 0.9s linear infinite',
   },
-  loadingText: {
-    color:   '#F5F5F7',
-    fontSize: 15,
-    opacity:  0.5,
+  loadingText: { color: '#F5F5F7', fontSize: 15, opacity: 0.5 },
+  emptyText:   { color: '#F5F5F7', fontSize: 15, opacity: 0.4 },
+
+  // ── Blocked states ──────────────────────────────────────────────────────
+  gateBox: {
+    display:        'flex',
+    flexDirection:  'column',
+    alignItems:     'center',
+    justifyContent: 'center',
+    padding:        '60px 24px',
+    maxWidth:       480,
+    margin:         '0 auto',
+    backgroundColor: 'rgba(17,17,25,0.6)',
+    borderRadius:   20,
+    border:         '1.5px solid rgba(157,124,255,0.2)',
   },
-  emptyText: {
-    color:   '#F5F5F7',
-    fontSize: 15,
-    opacity:  0.4,
+  gateIcon: {
+    fontSize:     48,
+    color:        '#9D7CFF',
+    opacity:      0.35,
+    marginBottom: 20,
   },
+  gateTitle: {
+    color:         '#FFFFFF',
+    fontSize:      22,
+    fontWeight:    800,
+    letterSpacing: '0.02em',
+    textAlign:     'center',
+    marginBottom:  12,
+    margin:        0,
+  },
+  gateDesc: {
+    color:     '#F5F5F7',
+    fontSize:  15,
+    opacity:   0.5,
+    textAlign: 'center',
+    lineHeight: 1.6,
+    margin:    0,
+    marginTop: 12,
+  },
+
   grid: {
     display:             'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
@@ -304,23 +442,23 @@ const s = {
     backgroundColor: '#000',
   },
   modalActions: {
-    display:        'flex',
-    gap:            8,
-    padding:        '12px 16px',
-    alignItems:     'center',
+    display:    'flex',
+    gap:        8,
+    padding:    '12px 16px',
+    alignItems: 'center',
   },
   dlBtn: {
-    flex:           1,
-    display:        'block',
-    textAlign:      'center',
+    flex:            1,
+    display:         'block',
+    textAlign:       'center',
     backgroundColor: '#FF7300',
-    color:          '#fff',
-    fontSize:       14,
-    fontWeight:     700,
-    padding:        '11px 0',
-    borderRadius:   10,
-    cursor:         'pointer',
-    textDecoration: 'none',
+    color:           '#fff',
+    fontSize:        14,
+    fontWeight:      700,
+    padding:         '11px 0',
+    borderRadius:    10,
+    cursor:          'pointer',
+    textDecoration:  'none',
   },
   shareBtn: {
     flex:         1,
