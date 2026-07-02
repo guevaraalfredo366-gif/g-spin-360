@@ -342,7 +342,7 @@ export default function SpeedEffectsEditor({
               border: item.accent ? `1px solid ${item.accent}40` : 'none',
             }}>
               <span style={{ color: '#888', fontSize: '8px', letterSpacing: '1.5px', fontWeight: 700 }}>{item.label}</span>
-              <span style={{ color: item.accent || '#fff', fontSize: '15px', fontWeight: 800, marginTop: '2px' }}>{item.value}</span>
+              <span style={{ color: typeof item.accent === 'string' ? item.accent : '#fff', fontSize: '15px', fontWeight: 800, marginTop: '2px' }}>{item.value}</span>
             </div>
           )
         )}
