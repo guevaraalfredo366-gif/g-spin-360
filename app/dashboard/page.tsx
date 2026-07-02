@@ -10,13 +10,15 @@ import CreateEventButton from '@/components/dashboard/CreateEventButton';
 import Link from 'next/link';
 
 interface FirestoreEvent {
-  id: string;
-  name: string;
-  date: Timestamp;
-  createdAt?: Timestamp;
-  location?: string;
-  videoCount?: number;
-  status: string;
+  id:             string;
+  name:           string;
+  eventDate?:     Timestamp | null;
+  date?:          Timestamp;          // legacy field — kept for backward compat
+  createdAt?:     Timestamp;
+  eventLocation?: string | null;
+  location?:      string;             // legacy field — kept for backward compat
+  videoCount?:    number;
+  status:         string;
 }
 
 function formatTs(ts: Timestamp | undefined): string {
@@ -68,8 +70,8 @@ export default function DashboardPage() {
           .map((d) => ({ id: d.id, ...d.data() } as FirestoreEvent))
           .sort((a, b) => {
             // Sort descending by createdAt, fall back to date
-            const aMs = a.createdAt?.toMillis?.() ?? a.date?.toMillis?.() ?? 0;
-            const bMs = b.createdAt?.toMillis?.() ?? b.date?.toMillis?.() ?? 0;
+            const aMs = a.createdAt?.toMillis?.() ?? a.eventDate?.toMillis?.() ?? a.date?.toMillis?.() ?? 0;
+            const bMs = b.createdAt?.toMillis?.() ?? b.eventDate?.toMillis?.() ?? b.date?.toMillis?.() ?? 0;
             return bMs - aMs;
           });
         setEvents(docs);
@@ -256,8 +258,8 @@ export default function DashboardPage() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
                       <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 500, color: '#ffffff', whiteSpace: 'nowrap' }}>{ev.name}</td>
-                      <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{formatTs(ev.date)}</td>
-                      <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{ev.location ?? '—'}</td>
+                      <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{formatTs(ev.eventDate ?? ev.date)}</td>
+                      <td style={{ padding: '14px 20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{ev.eventLocation ?? ev.location ?? '—'}</td>
                       <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>{ev.videoCount ?? 0}</td>
                       <td style={{ padding: '14px 20px' }}>
                         <span
