@@ -94,10 +94,14 @@ export default function EventsPage() {
             const bMs = b.createdAt?.toMillis?.() ?? b.date?.toMillis?.() ?? 0;
             return bMs - aMs;
           });
+        console.log('[EventsPage] onSnapshot docs recibidos:', snap.docs.length, docs.map(d => ({ id: d.id, name: d.name, eventDate: d.eventDate, eventLocation: d.eventLocation })));
         setEvents(docs);
         setLoading(false);
       },
-      () => setLoading(false),
+      (err) => {
+        console.error('[EventsPage] onSnapshot error:', err.code, err.message);
+        setLoading(false);
+      },
     );
     return unsub;
   }, [user]);
